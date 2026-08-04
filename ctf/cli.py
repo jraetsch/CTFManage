@@ -366,7 +366,84 @@ def cmd_get(args) -> int:
     return EXIT_OK
 
 
+def cmd_list_available(args) -> int:
+    """`ctf list --available`: what the platform catalogue offers.
+
+    Reads the local index — no network. The point is the pairing with `ctf get`:
+    see what exists, then fetch one by name. Challenges already tracked are
+    marked, so what is left to do is visible at a glance.
+    """
+    cfg = cfgmod.load()
+    conn = _open_db(cfg)
+    registry.load_all()
+
+    plats = [registry.get(args.platform)] if args.platform else registry.all_platforms()
+
+    tracked: dict[tuple[str, str], str] = {}
+    for row in conn.execute("SELECT platform, slug, status FROM challenge"):
+        tracked[(row["platform"].lower(), row["slug"])] = row["status"]
+
+    rows, total, hidden = [], 0, 0
+    for plat in plats:
+        try:
+            catalogue = plat.catalogue()
+        except ManualStepRequired:
+            continue
+        total += len(catalogue)
+        for c in catalogue:
+            if args.category and (c.category or "").lower() != args.category.lower():
+                continue
+            try:
+                slug = mat.slugify(c.name) if c.name else None
+            except mat.UnsafeName:
+                slug = None
+            status = tracked.get((plat.name.lower(), slug)) if slug else None
+            if args.untracked and status is not None:
+                hidden += 1
+                continue
+            rows.append((plat.name, c, status))
+
+    if not rows:
+        if total == 0:
+            names = ", ".join(p.name for p in plats)
+            msg(f"no index for {names} — run `ctf index {plats[0].name}`")
+        elif hidden:
+            msg(f"nothing left — all {hidden} catalogue challenges are tracked")
+        else:
+            msg(f"no match in {total} catalogue challenges")
+        return EXIT_OK
+
+    if args.json:
+        out(json.dumps([{
+            "platform": p, "name": c.name, "category": c.category,
+            "difficulty": c.difficulty, "points": c.points,
+            "artifacts": len(c.artifacts), "endpoints": len(c.endpoints),
+            "status": s,
+        } for p, c, s in rows], indent=2, ensure_ascii=False))
+        return EXIT_OK
+
+    rows.sort(key=lambda r: ((r[1].category or "~"), r[1].name.lower()))
+    w_name = min(max(len(c.name) for _, c, _ in rows), 44)
+    w_cat = max(len(c.category or "") for _, c, _ in rows)
+
+    for platform, c, status in rows:
+        mark = _status_mark(status) if status else " "
+        name = c.name if len(c.name) <= w_name else c.name[:w_name - 1] + "…"
+        extra = c.difficulty or ""
+        msg(f" {mark} {name:<{w_name}}  {(c.category or ''):<{w_cat}}  {extra}")
+
+    have = sum(1 for _, _, s in rows if s)
+    msg("")
+    msg(f" {len(rows)} in the catalogue — {have} tracked, {len(rows) - have} not")
+    if not args.untracked and have:
+        msg(" `ctf list --available --untracked` hides the ones you have")
+    msg(" `ctf get \"<name>\"` to fetch one")
+    return EXIT_OK
+
+
 def cmd_list(args) -> int:
+    if args.available:
+        return cmd_list_available(args)
     cfg = cfgmod.load()
     conn = _open_db(cfg)
     rows = dbmod.query(conn, status=args.status, category=args.category,
@@ -536,12 +613,16 @@ ctf — fetch, organise and track CTF challenges
 This is the guide to what that listing cannot tell you.
 
 TYPICAL SESSION
+      ctf list --available              browse what the platform offers
       ctf get "Glory of the Garden"     create the folder, download the files,
                                         track it, and cd into it
       ctf start                         no name needed — you are standing in it
       ctf note tried strings, nothing
       ctf hint                          when you are stuck
       ctf solve --flag 'picoCTF{...}'
+
+  `ctf list` shows what you are tracking; `ctf list --available` shows the whole
+  catalogue with those marked, so `--untracked` is "what is left to do".
 
 REFS
   <ref> is optional wherever a challenge is acted on. Left out it means the
@@ -650,10 +731,17 @@ def build_parser() -> argparse.ArgumentParser:
                     help="accept every unseen artifact host without asking")
     sp.set_defaults(func=cmd_index)
 
-    sp = with_platform(cmd("list", "tracked challenges, filterable", blank_before=True))
+    sp = with_platform(cmd("list", "tracked challenges, or the whole catalogue",
+                           blank_before=True))
     sp.add_argument("--status", choices=dbmod.STATUSES)
     sp.add_argument("--category", "-c")
     sp.add_argument("--json", action="store_true")
+    # --online is accepted because it is what people reach for, but the data is
+    # the local index cache; nothing here touches the network.
+    sp.add_argument("--available", "--online", action="store_true",
+                    help="list the platform catalogue, not just what you have")
+    sp.add_argument("--untracked", action="store_true",
+                    help="with --available: hide challenges you already have")
     sp.set_defaults(func=cmd_list)
 
     sp = with_ref(cmd("show", "one challenge in detail"))

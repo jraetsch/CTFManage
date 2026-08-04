@@ -13,10 +13,10 @@ picoCTF · Glory of the Garden · Forensics
 
 With the shell function installed, that also drops you in the directory.
 
-> **Status: working.** Every command is implemented, with 26 tests and an
-> end-to-end run against the live picoCTF CDN. The one unverified piece is the
-> browser index snippet, which has never run against the real API — see
-> `BUILD_LOG.md` § Known gaps.
+> **Status: working.** Every command is implemented, with 50 tests and an
+> end-to-end run against the live picoCTF CDN. Index acquisition is verified
+> against the real API (525 challenges); the remaining unknown is the field
+> mapping — see `BUILD_LOG.md` § Known gaps.
 
 ## What it does
 
@@ -102,8 +102,10 @@ $ ctf start                            # no ref needed — you are standing in i
 $ ctf note tried strings, nothing
 $ ctf hint                             # hints are never shown by `ctf show`
 $ ctf solve --flag 'picoCTF{…}'
+$ ctf list                             # what you are tracking
 $ ctf list --status started
-$ ctf list --category Forensics --platform picoCTF
+$ ctf list --available                 # the whole catalogue, tracked ones marked
+$ ctf list --available --untracked     # ... only what you have not done yet
 $ ctf export --format csv -o ~/ctf-overview.csv
 ```
 

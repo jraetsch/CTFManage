@@ -396,6 +396,9 @@ class PicoCTF(Platform):
                   f"nor endpoints (likely description-only)", file=sys.stderr)
         return len(entries)
 
+    def catalogue(self) -> list[Challenge]:
+        return [_to_challenge(e) for e in self._load_index()]
+
     # -- resolution -------------------------------------------------------
 
     def resolve(self, ref: str) -> list[Challenge]:

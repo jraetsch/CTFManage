@@ -46,6 +46,14 @@ class Platform:
         """
         raise NotImplementedError
 
+    def catalogue(self) -> list[Challenge]:
+        """Every challenge in the local index, for `ctf list --available`.
+
+        Local only, like resolve(). An empty list means "no index yet", which
+        the CLI reports as a suggestion to run `ctf index`.
+        """
+        return []
+
     def index_status(self) -> str:
         return "unknown"
 
