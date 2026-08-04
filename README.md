@@ -95,14 +95,22 @@ local and instant. Details in `docs/PLATFORMS.md`.
 ## Everyday use
 
 ```console
-$ ctf get "Glory of the Garden"        # download + track + cd
-$ ctf solve garden --flag 'picoCTF{…}'
+$ ctf get "Glory of the Garden"        # download + track + cd into it
+$ ctf start                            # no ref needed — you are standing in it
+$ ctf note tried strings, nothing
+$ ctf solve --flag 'picoCTF{…}'
 $ ctf list --status started
 $ ctf list --category Forensics --platform picoCTF
-$ ctf show garden
 $ ctf export --format csv -o ~/ctf-overview.csv
-$ ctf open garden                      # challenge page in the browser
 ```
+
+`<ref>` is optional on every command that acts on a challenge. Omit it and ctf
+uses the challenge whose folder you are in — including from a subdirectory. To
+act on a different one, name it: `ctf show garden`, `ctf open garden`.
+
+`note` and `tag` take free text, so their ref is a flag instead:
+`ctf note -r garden tried strings`. Otherwise a note starting with a challenge
+name would be indistinguishable from a ref.
 
 Statuses: `new`, `started`, `stuck`, `solved`, `abandoned`.
 

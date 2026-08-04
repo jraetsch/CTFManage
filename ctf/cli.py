@@ -48,8 +48,41 @@ def _open_db(cfg):
     return dbmod.connect(cfg.db_path)
 
 
-def _one(conn, ref: str, platform: str | None = None):
-    """Resolve a ref against the DB to exactly one row, or raise."""
+def _from_cwd(conn, cfg):
+    """The tracked challenge containing the working directory, or None.
+
+    Matches the deepest challenge whose directory is the cwd or an ancestor of
+    it, so being in `glory_of_the_garden/subdir/` still resolves.
+    """
+    try:
+        cwd = Path.cwd().resolve()
+    except OSError:                      # cwd was deleted underneath us
+        return None
+    best, best_len = None, -1
+    for row in conn.execute("SELECT * FROM challenge").fetchall():
+        d = (cfg.ctf_root / row["path"]).resolve()
+        if cwd == d or d in cwd.parents:
+            if len(str(d)) > best_len:
+                best, best_len = row, len(str(d))
+    return best
+
+
+def _one(conn, cfg, ref: str | None, platform: str | None = None):
+    """Resolve a ref against the DB to exactly one row, or raise.
+
+    With no ref, fall back to the challenge the working directory is in — the
+    common case is acting on the challenge you are standing in.
+    """
+    if not ref:
+        row = _from_cwd(conn, cfg)
+        if row is None:
+            raise CLIError(
+                "no <ref> given and the current directory is not a tracked "
+                "challenge — pass a name, or cd into a challenge folder",
+                EXIT_NOTFOUND,
+            )
+        return row
+
     rows = dbmod.find(conn, ref, platform)
     if not rows:
         raise CLIError(
@@ -324,7 +357,7 @@ def cmd_list(args) -> int:
 def cmd_show(args) -> int:
     cfg = cfgmod.load()
     conn = _open_db(cfg)
-    r = _one(conn, args.ref, args.platform)
+    r = _one(conn, cfg, args.ref, args.platform)
     msg(f"{r['name']}  [{r['status']}]")
     for label, key in (("platform", "platform"), ("category", "category"),
                        ("difficulty", "difficulty"), ("points", "points"),
@@ -364,7 +397,7 @@ def cmd_show(args) -> int:
 def cmd_status(args) -> int:
     cfg = cfgmod.load()
     conn = _open_db(cfg)
-    r = _one(conn, args.ref, args.platform)
+    r = _one(conn, cfg, args.ref, args.platform)
     flag = getattr(args, "flag", None)
     dbmod.set_status(conn, r["id"], args.status, flag)
     msg(f"{r['name']} → {args.status}" + (f"  {flag}" if flag else ""))
@@ -374,7 +407,7 @@ def cmd_status(args) -> int:
 def cmd_note(args) -> int:
     cfg = cfgmod.load()
     conn = _open_db(cfg)
-    r = _one(conn, args.ref, args.platform)
+    r = _one(conn, cfg, args.ref, args.platform)
     dbmod.append_note(conn, r["id"], " ".join(args.text))
     msg(f"noted on {r['name']}")
     return EXIT_OK
@@ -383,7 +416,7 @@ def cmd_note(args) -> int:
 def cmd_tag(args) -> int:
     cfg = cfgmod.load()
     conn = _open_db(cfg)
-    r = _one(conn, args.ref, args.platform)
+    r = _one(conn, cfg, args.ref, args.platform)
     joined = dbmod.add_tags(conn, r["id"], args.tags)
     msg(f"{r['name']} tags: {joined}")
     return EXIT_OK
@@ -406,7 +439,7 @@ def cmd_export(args) -> int:
 def cmd_path(args) -> int:
     cfg = cfgmod.load()
     conn = _open_db(cfg)
-    r = _one(conn, args.ref, args.platform)
+    r = _one(conn, cfg, args.ref, args.platform)
     out(str(cfg.ctf_root / r["path"]))
     return EXIT_OK
 
@@ -414,7 +447,7 @@ def cmd_path(args) -> int:
 def cmd_open(args) -> int:
     cfg = cfgmod.load()
     conn = _open_db(cfg)
-    r = _one(conn, args.ref, args.platform)
+    r = _one(conn, cfg, args.ref, args.platform)
     if not r["url"]:
         raise CLIError(f"no challenge URL recorded for {r['name']!r}")
     subprocess.Popen(["xdg-open", r["url"]],
@@ -444,6 +477,17 @@ TYPICAL SESSION
   `glory_of_the_garden` and "Glory of the Garden" all work. If a ref matches
   more than one challenge, ctf lists the candidates and refuses to guess.
 
+  <ref> is optional everywhere. Leave it out and ctf uses the challenge whose
+  folder you are standing in, so once you have cd'd in, the ref is noise:
+
+      ctf start                         these act on the current folder
+      ctf note tried strings
+      ctf solve --flag 'picoCTF{...}'
+
+  note and tag take free text, so their ref is a flag rather than a positional
+  ('ctf note garden ...' could not be told apart from a note beginning with the
+  word "garden"):  ctf note -r garden tried strings
+
 FIRST RUN
   ctf init                       set the CTF root, create the database
   ctf adopt                      import challenge folders you already have
@@ -460,11 +504,11 @@ GETTING CHALLENGES
 TRACKING
   ctf list                       everything, grouped and counted
       --status <s>  --category <c>  --platform <p>  --json
-  ctf show <ref>                 one challenge in full, with artifacts + notes
-  ctf start|stuck|abandon <ref>  change status
-  ctf solve <ref> [--flag F]     status=solved, stamps the solve time
-  ctf note <ref> <text>          append a timestamped note
-  ctf tag <ref> <tags...>        add free-form tags
+  ctf show [ref]                 one challenge in full, with artifacts + notes
+  ctf start|stuck|abandon [ref]  change status
+  ctf solve [ref] [--flag F]     status=solved, stamps the solve time
+  ctf note [-r ref] <text>       append a timestamped note
+  ctf tag [-r ref] <tags...>     add free-form tags
   ctf export [--format csv|md|json] [-o FILE]
 
   Statuses: new · started · stuck · solved · abandoned
@@ -534,6 +578,13 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--platform", "-p", help="restrict to one platform")
         return sp
 
+    # Every command that acts on an existing challenge takes <ref> optionally;
+    # omitted, it means "the challenge I am standing in". See _from_cwd().
+    def with_ref(sp):
+        sp.add_argument("ref", nargs="?",
+                        help="challenge name/slug; default: the current folder")
+        return with_platform(sp)
+
     sp = sub.add_parser("init", help="first-run setup")
     sp.add_argument("--root", help="CTF root directory")
     sp.set_defaults(func=cmd_init)
@@ -562,28 +613,29 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_list)
 
-    sp = with_platform(sub.add_parser("show", help="one challenge in detail"))
-    sp.add_argument("ref")
+    sp = with_ref(sub.add_parser("show", help="one challenge in detail"))
     sp.set_defaults(func=cmd_show)
 
     for status in ("start", "stuck", "abandon"):
         canonical = {"start": "started", "stuck": "stuck", "abandon": "abandoned"}[status]
-        sp = with_platform(sub.add_parser(status, help=f"mark as {canonical}"))
-        sp.add_argument("ref")
+        sp = with_ref(sub.add_parser(status, help=f"mark as {canonical}"))
         sp.set_defaults(func=cmd_status, status=canonical)
 
-    sp = with_platform(sub.add_parser("solve", help="mark as solved"))
-    sp.add_argument("ref")
+    sp = with_ref(sub.add_parser("solve", help="mark as solved"))
     sp.add_argument("--flag", "-f")
     sp.set_defaults(func=cmd_status, status="solved")
 
+    # note/tag take trailing free text, so <ref> cannot also be positional —
+    # `ctf note garden ...` would be indistinguishable from a note that happens
+    # to start with the word "garden". The ref moves to a flag; omitted, the
+    # cwd rule applies as everywhere else.
     sp = with_platform(sub.add_parser("note", help="append a note"))
-    sp.add_argument("ref")
+    sp.add_argument("--ref", "-r", help="challenge; default: the current folder")
     sp.add_argument("text", nargs="+")
     sp.set_defaults(func=cmd_note)
 
     sp = with_platform(sub.add_parser("tag", help="add tags"))
-    sp.add_argument("ref")
+    sp.add_argument("--ref", "-r", help="challenge; default: the current folder")
     sp.add_argument("tags", nargs="+")
     sp.set_defaults(func=cmd_tag)
 
@@ -593,13 +645,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_export)
 
     for name, help_text in (("path", "print the directory"), ("cd", "print the directory")):
-        sp = with_platform(sub.add_parser(name, help=help_text))
-        sp.add_argument("ref")
+        sp = with_ref(sub.add_parser(name, help=help_text))
         sp.add_argument("--print-path", action="store_true", help=argparse.SUPPRESS)
         sp.set_defaults(func=cmd_path)
 
-    sp = with_platform(sub.add_parser("open", help="open the challenge page"))
-    sp.add_argument("ref")
+    sp = with_ref(sub.add_parser("open", help="open the challenge page"))
     sp.set_defaults(func=cmd_open)
 
     sp = sub.add_parser("platforms", help="registered platforms")
