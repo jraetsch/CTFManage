@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Browser index dumps.
+#
+# These land in the repo only by accident (they normally go to ~/Downloads and
+# then to ~/.config/ctftool/index/), but they are a whole-catalogue export of a
+# LOGGED-IN session: the raw records can carry per-user fields such as solve
+# state and user ids. Never commit one.
+#
+# The negation keeps the hand-written test fixture, which contains no real
+# session data.
+*-index.json
+picoctf-index.json
+!tests/fixtures/*.json
+
+# Local scratch
+scratch/
+*.local
