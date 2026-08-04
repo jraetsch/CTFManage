@@ -1,0 +1,62 @@
+{
+  "_ctftool_index": 1,
+  "fetched_at": "2026-08-04T00:00:00.000Z",
+  "challenges": [
+    {
+      "id": 80,
+      "name": "Glory of the Garden",
+      "category": {"id": 1, "name": "Forensics"},
+      "difficulty": "easy",
+      "points": 50,
+      "author": "DANNY TUNITIS",
+      "event": {"name": "picoGym"},
+      "_instance": {
+        "description": "This <a href=\"https://artifacts.picoctf.net/c/80/Flag.pdf\">garden</a> contains more than it seems. See also https://picoctf.org/learn",
+        "endpoints": [],
+        "hints": ["What is a hex editor?"]
+      },
+      "_urls": [
+        "https://artifacts.picoctf.net/c/80/Flag.pdf",
+        "https://picoctf.org/learn"
+      ]
+    },
+    {
+      "id": 511,
+      "name": "Timestamped Secrets",
+      "category": {"id": 2, "name": "Cryptography"},
+      "difficulty": "medium",
+      "points": 100,
+      "_instance": {
+        "description": "Download the message: https://challenge-files.picoctf.net/c_plain_mesa/95b5340b7c7992206c61b8092b01ab36a563e2df91c5fb36aee43b647d720dbe/message.txt",
+        "endpoints": [],
+        "hints": []
+      },
+      "_urls": [
+        "https://challenge-files.picoctf.net/c_plain_mesa/95b5340b7c7992206c61b8092b01ab36a563e2df91c5fb36aee43b647d720dbe/message.txt"
+      ]
+    },
+    {
+      "id": 222,
+      "name": "Sum-O-Primes",
+      "category": {"name": "Binary Exploitation"},
+      "difficulty": "hard",
+      "_instance": {
+        "description": "Connect to the service. No files for this one.",
+        "endpoints": [{"label": "netcat", "endpoint": "nc saturn.picoctf.net 51234"}],
+        "hints": ["RSA is fragile when p and q are close."]
+      },
+      "_urls": []
+    },
+    {
+      "id": 999,
+      "name": "Future Host Challenge",
+      "category": {"name": "Forensics"},
+      "_instance": {
+        "description": "Grab it from https://files2.picoctf.net/c_new/abc/data.bin",
+        "endpoints": [],
+        "hints": []
+      },
+      "_urls": ["https://files2.picoctf.net/c_new/abc/data.bin"]
+    }
+  ]
+}
