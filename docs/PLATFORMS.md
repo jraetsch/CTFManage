@@ -96,6 +96,9 @@ rather than attempting to defeat bot protection.
 | | |
 |---|---|
 | Listing endpoint | `https://play.picoctf.org/api/challenges/?page_size=100&page=N` |
+| Listing response | `{results: [...], count: N}` — **verified 2026-08-04**. There is **no `next` field**; see § Pagination |
+| Catalogue size | **525 challenges**, 6 pages at `page_size=100` (verified) |
+| `page_size` cap | 100 honoured; larger values untested |
 | Headless access | **Blocked.** 403, Cloudflare managed challenge. A Chrome `User-Agent` does not help. |
 | Auth | Required (session cookie) in addition to the Cloudflare clearance. |
 | Artifact hosts | `artifacts.picoctf.net` **and** `challenge-files.picoctf.net` — at least two, see below |
@@ -177,7 +180,9 @@ if (r.next === null || r.next === undefined) break;   // WRONG
 ```
 
 `r.next === undefined` does not mean "no more pages". It means "this response
-has no field called `next`" — an unrecognised shape. Treating unknown as
+has no field called `next`" — an unrecognised shape. **Confirmed on 2026-08-04:
+the response is `{results, count}` and carries no `next` field at all**, so the
+`undefined` arm fired on page 1 of every run ever made. Treating unknown as
 finished capped every run at exactly one page, so the snippet reported
 `100 challenges listed` while picoCTF has several hundred. Nothing errored; the
 index was simply short, and the missing challenges looked like challenges that

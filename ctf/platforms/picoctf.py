@@ -103,11 +103,19 @@ if (expected !== null && listed.length < expected) {
 console.log(`${listed.length} challenges listed, fetching details...`);
 
 const out = [];
+const failed = {main: 0, instance: 0};
+let lastError = null;
+
 for (const [i, c] of listed.entries()) {
   const id = c.id ?? c.pk;
   let main = c, instance = null;
-  try { main = await j(`/api/challenges/${id}/`); } catch (e) {}
-  try { instance = await j(`/api/challenges/${id}/instance/`); } catch (e) {}
+  // Failures are counted, never swallowed. A rate limit partway through would
+  // otherwise yield a full-looking index whose descriptions — and therefore
+  // whose artifact URLs — are missing.
+  try { main = await j(`/api/challenges/${id}/`); }
+  catch (e) { failed.main++; lastError = e; }
+  try { instance = await j(`/api/challenges/${id}/instance/`); }
+  catch (e) { failed.instance++; lastError = e; }
   const rec = {...main, _instance: instance};
   // Capture EVERY url. Classification happens in Python, not here.
   rec._urls = [...new Set(
@@ -116,6 +124,25 @@ for (const [i, c] of listed.entries()) {
   out.push(rec);
   if (i % 25 === 0) console.log(`  ${i}/${listed.length}`);
   await sleep(120);          // be polite; this runs once a year
+}
+
+// How many records actually carry a description? Artifact URLs live inside it,
+// so this number is the real predictor of whether the index is usable.
+const withDesc = out.filter(r => (r._instance && r._instance.description)
+                                 || r.description).length;
+const withUrls = out.filter(r => r._urls && r._urls.length).length;
+console.log(`descriptions: ${withDesc}/${out.length}   with URLs: ${withUrls}`);
+if (failed.main || failed.instance) {
+  console.warn(`WARNING: ${failed.main} detail and ${failed.instance} instance ` +
+               `requests failed — the index is incomplete. Last error:`, lastError);
+  console.warn('Re-run after a pause, or raise the sleep() above.');
+}
+// Print one record's field names: the Python mapping in normalise() is written
+// against these, and nobody had seen them until this line ran.
+if (out.length) {
+  console.log('challenge fields:', Object.keys(out[0]).join(', '));
+  if (out[0]._instance)
+    console.log('instance fields:', Object.keys(out[0]._instance).join(', '));
 }
 
 const blob = new Blob([JSON.stringify(
