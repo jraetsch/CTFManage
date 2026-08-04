@@ -56,16 +56,49 @@ CONSOLE_SNIPPET = r"""
 // 2. Press F12 -> Console, paste this, press Enter.
 // 3. It takes a few minutes and downloads picoctf-index.json when done.
 
+const PAGE_SIZE = 100;
+const MAX_PAGES = 200;          // runaway guard, not an expected limit
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const j = async u => (await fetch(u, {headers: {accept: 'application/json'}})).json();
 
 const listed = [];
-for (let page = 1; ; page++) {
-  const r = await j(`/api/challenges/?page_size=100&page=${page}`);
-  const items = r.results ?? r;
-  if (!items || !items.length) break;
-  listed.push(...items);
-  if (r.next === null || r.next === undefined) break;
+const seen = new Set();
+let expected = null;
+
+for (let page = 1; page <= MAX_PAGES; page++) {
+  const r = await j(`/api/challenges/?page_size=${PAGE_SIZE}&page=${page}`);
+  if (page === 1) {
+    // Print the real shape once: everything downstream is inference until
+    // somebody looks at this line.
+    console.log('response keys:',
+      Array.isArray(r) ? '(bare array)' : Object.keys(r).join(', '));
+    expected = r.count ?? r.total ?? r.total_count ?? null;
+    if (expected !== null) console.log(`server reports ${expected} challenges`);
+  }
+  const items = Array.isArray(r)
+    ? r
+    : (r.results ?? r.data ?? r.challenges ?? r.items ?? []);
+  if (!items.length) break;
+
+  let added = 0;
+  for (const c of items) {
+    const key = c.id ?? c.pk ?? c.name;
+    if (!seen.has(key)) { seen.add(key); listed.push(c); added++; }
+  }
+  console.log(`  page ${page}: ${items.length} items, ${added} new ` +
+              `(${listed.length} total)`);
+
+  // Stop on a SHORT page, never on a missing field. An absent `next` means
+  // "shape I did not predict", not "no more pages" — assuming otherwise
+  // capped this at exactly one page.
+  if (items.length < PAGE_SIZE) break;
+  if (added === 0) break;                 // page param ignored: same page again
+  await sleep(150);
+}
+
+if (expected !== null && listed.length < expected) {
+  console.warn(`WARNING: listed ${listed.length} of ${expected} — pagination ` +
+               `stopped early, check the page params above`);
 }
 console.log(`${listed.length} challenges listed, fetching details...`);
 

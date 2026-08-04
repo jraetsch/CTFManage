@@ -139,48 +139,68 @@ silently produced zero artifacts for any challenge served from
 and expire within days. Rather than fight that, borrow the session once from
 inside the browser, where the request is same-origin and already cleared.
 
-`ctf index picoCTF` prints this and exits:
-
-```js
-// Firefox/Chrome → F12 → Console, on https://play.picoctf.org/practice
-const out = {};
-for (let page = 1; ; page++) {
-  const r = await (await fetch(`/api/challenges/?page_size=100&page=${page}`)).json();
-  const items = r.results ?? r;
-  if (!items?.length) break;
-  for (const c of items) {
-    // Capture EVERY url. Classification happens in Python, not here.
-    const urls = [...new Set(
-      JSON.stringify(c).match(/https?:\/\/[^"'\\ )<>\]]+/g) || []
-    )];
-    out[c.name] = { ...c, _urls: urls };
-  }
-}
-console.log(Object.keys(out).length + " challenges");
-const a = document.createElement('a');
-a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], {type:'application/json'}));
-a.download = 'picoctf-index.json'; a.click();
-```
+`ctf index picoCTF` prints the snippet and exits 0. **The snippet itself lives
+in `CONSOLE_SNIPPET` in `ctf/platforms/picoctf.py` and is not duplicated here** —
+an earlier copy in this file silently drifted out of date, which is exactly the
+failure a second copy invites. Run `ctf index picoCTF` to see the current one.
 
 Then: `ctf index picoCTF --from-file ~/Downloads/picoctf-index.json`
 
-Three deliberate choices, in increasing order of importance:
+Four properties of the snippet are load-bearing, in increasing order of
+importance:
 
-- **`r.results ?? r`** — the API response shape is unverified (nobody has logged
-  in yet). This handles both a paginated envelope and a bare array.
-- **A regex over `JSON.stringify(c)`** rather than reading a named field. The
-  URLs live somewhere in the challenge description as HTML anchors, Markdown
-  links, or bare text, and the field names are unknown. Scanning the serialized
-  record finds them regardless of schema and survives field renames.
+- **Two-phase fetch.** The list endpoint does not carry descriptions; those come
+  from `/api/challenges/<id>/instance/`, and artifact URLs are embedded *inside*
+  description text. A single-call snippet produces an index with no artifacts.
+- **A regex over `JSON.stringify(rec)`** rather than reading a named field. The
+  URLs sit somewhere in the description as HTML anchors, Markdown links, or bare
+  text, and the field names are unknown. Scanning the serialized record finds
+  them regardless of schema and survives renames.
+- **Pagination stops on a short page, never on a missing field.** See below.
 - **No host filtering in the snippet.** It captures every URL it sees, including
-  ones that are obviously not artifacts. This is the single most important
-  property of the snippet and it is deliberate: **the snippet is the only
-  component that is expensive to re-run** — it needs a browser, a login, and a
-  human. Anything baked into it that later turns out to be wrong costs a manual
-  re-run to fix. So it must contain no judgement, only capture.
+  obvious non-artifacts. This is the single most important property and it is
+  deliberate: **the snippet is the only component that is expensive to re-run** —
+  it needs a browser, a login, and a human. Anything baked into it that later
+  turns out to be wrong costs a manual re-run. So it must contain no judgement,
+  only capture.
 
-The whole record is kept (`...c`) so `category`, `difficulty`, description and
-event data can be mapped once the real shape is known. Do that in Python.
+The whole record is kept (`{...main, _instance}`) so `category`, `difficulty`,
+description and event data can be mapped once the real shape is known. Do that
+in Python.
+
+#### Pagination: stop on a short page, not on `next`
+
+The first version ended each iteration with:
+
+```js
+if (r.next === null || r.next === undefined) break;   // WRONG
+```
+
+`r.next === undefined` does not mean "no more pages". It means "this response
+has no field called `next`" — an unrecognised shape. Treating unknown as
+finished capped every run at exactly one page, so the snippet reported
+`100 challenges listed` while picoCTF has several hundred. Nothing errored; the
+index was simply short, and the missing challenges looked like challenges that
+do not exist.
+
+The rule that replaces it makes no assumption about field names:
+
+```js
+if (items.length < PAGE_SIZE) break;   // a short page is the last page
+if (added === 0) break;                // page param ignored: same page again
+```
+
+Plus `count`/`total` is read when present *purely as a cross-check* — if fewer
+challenges were listed than the server claims exist, the snippet warns loudly
+rather than proceeding quietly. And page 1 logs `Object.keys(r)` so the real
+response shape is visible the first time anyone runs it, instead of remaining
+an inference.
+
+This is the third time an assumption baked into the snippet has been wrong
+(hardcoded artifact host, description on the wrong endpoint, pagination). The
+pattern is consistent: **every one was a guess about a response shape nobody had
+seen.** Prefer structural stopping conditions and loud cross-checks over field
+names.
 
 ### Host classification (Python side)
 
