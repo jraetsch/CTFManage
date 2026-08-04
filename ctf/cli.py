@@ -495,95 +495,48 @@ def cmd_open(args) -> int:
 HELP = """\
 ctf — fetch, organise and track CTF challenges
 
-USAGE
-  ctf <command> [args]          ctf help <command>   for details on one command
+`ctf` lists the commands. `ctf <command> --help` shows one command's flags.
+This is the guide to what that listing cannot tell you.
 
 TYPICAL SESSION
-  You found a challenge in your browser and want it on disk:
-
       ctf get "Glory of the Garden"     create the folder, download the files,
-                                        start tracking it, and cd into it
-      ctf start                         mark it as in progress
-      ctf note tried strings, nothing   jot down where you got to
+                                        track it, and cd into it
+      ctf start                         no name needed — you are standing in it
+      ctf note tried strings, nothing
       ctf hint                          when you are stuck
       ctf solve --flag 'picoCTF{...}'
 
-  After `ctf get` you are already in the challenge folder, so none of those
-  need a name. See REFS below for acting on a challenge you are not in.
-
-  Refs are lenient: exact slug, then exact name, then substring. So `garden`,
-  `glory_of_the_garden` and "Glory of the Garden" all work. If a ref matches
-  more than one challenge, ctf lists the candidates and refuses to guess.
-
 REFS
-  <ref> is optional on every command that acts on an existing challenge. Left
-  out, it means the challenge whose folder you are in — a subdirectory counts,
-  so it still works from `glory_of_the_garden/scratch/`.
+  <ref> is optional wherever a challenge is acted on. Left out it means the
+  challenge whose folder you are in, subdirectories included. Name one to act
+  from elsewhere: `ctf show garden`.
 
-  To act on a challenge you are not standing in, name it: `ctf show garden`.
+  Matching is exact slug, then exact name, then substring — `garden`,
+  `glory_of_the_garden` and "Glory of the Garden" all reach the same challenge.
+  An ambiguous ref lists the candidates and refuses to guess.
 
-  note and tag take free text, so their ref is a flag rather than a positional
-  ('ctf note garden ...' could not be told apart from a note beginning with the
-  word "garden"):  ctf note -r garden tried strings
-
-FIRST RUN
-  ctf init                       set the CTF root, create the database
-  ctf adopt                      import challenge folders you already have
-  ctf index picoCTF              one-time browser step, see INDEXING below
-
-GETTING CHALLENGES
-  ctf get <ref>                  download + track + cd
-      --force                    re-download files that are already present
-      --no-download              create and track, fetch nothing
-      --dry-run                  show what would happen, write nothing
-  ctf adopt [--dry-run]          import existing folders; re-run after indexing
-                                 to backfill categories and descriptions
-
-TRACKING
-  ctf list                       everything, grouped and counted
-      --status <s>  --category <c>  --platform <p>  --json
-  ctf show [ref]                 one challenge in full, with artifacts + notes
-  ctf hint [ref] [-n N]          print hints — deliberately NOT part of `show`,
-                                 so looking up a category cannot spoil you
-  ctf start|stuck|abandon [ref]  change status
-  ctf solve [ref] [--flag F]     status=solved, stamps the solve time
-  ctf note [-r ref] <text>       append a timestamped note
-  ctf tag [-r ref] <tags...>     add free-form tags
-  ctf export [--format csv|md|json] [-o FILE]
-
-  Statuses: new · started · stuck · solved · abandoned
-
-NAVIGATING
-  ctf path <ref>                 print the absolute path
-  ctf cd <ref>                   same, and cd there (needs the zsh function)
-  ctf open <ref>                 open the challenge page in a browser
-
-PLATFORMS
-  ctf platforms                  what is registered, and index freshness
-  ctf index <platform>           rebuild the catalogue
+  note and tag take free text, so their ref is a flag instead of a positional:
+  `ctf note -r garden tried strings`. Otherwise a note that began with a
+  challenge name could not be told apart from a ref.
 
 INDEXING
-  On picoCTF the challenge *listing* is behind Cloudflare and a login, but the
-  challenge *files* are on a public CDN. So `ctf index picoCTF` prints a snippet
-  to paste into your browser console once; everything after that is local and
-  instant. Re-run it maybe once a year, or during a live competition.
+  picoCTF's challenge listing sits behind Cloudflare and a login, but the
+  challenge files are on a public CDN. So `ctf index picoCTF` prints a snippet
+  to paste into your browser console once; after that, resolution is local and
+  instant. Re-run it about yearly, or during a live competition.
 
-      ctf index picoCTF                                     prints the snippet
       ctf index picoCTF --from-file ~/Downloads/picoctf-index.json
 
 WHERE THINGS LIVE
-  ~/.config/ctftool/config.toml    settings
-  ~/.config/ctftool/index/         cached catalogues (rebuildable)
-  $CTF_ROOT/.ctftool/ctf.db        the tracking database
-  $CTF_ROOT/<Platform>/<slug>/     one folder per challenge, artifacts flat
+  ~/.config/ctftool/              config, and cached catalogues
+  $CTF_ROOT/.ctftool/ctf.db       the tracking database
+  $CTF_ROOT/<Platform>/<slug>/    one folder per challenge, artifacts flat
 
-EXIT CODES
-  0 ok    1 error    2 ambiguous ref    3 not found    4 download failed
+  Statuses: new · started · stuck · solved · abandoned
+  Exit:     0 ok · 1 error · 2 ambiguous · 3 not found · 4 download failed
 
-NOTES
-  Progress goes to stderr, the resulting path to stdout — that is what makes
-  `cd "$(ctf path foo)"` safe. `ctf get` is additive and idempotent: it never
-  overwrites or deletes anything it did not create.
+  `ctf get` is additive and idempotent — it never overwrites or deletes
+  anything it did not create.
 """
 
 
@@ -610,9 +563,19 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ctf",
         description="Fetch, organise and track CTF challenges.",
-        epilog="`ctf help` gives a task-oriented overview with examples.",
+        epilog="`ctf` lists the commands; `ctf help` is the guide.",
     )
     sub = p.add_subparsers(dest="command", required=False)
+
+    # The one-liners registered here are the single source for the command list
+    # printed by bare `ctf`, so the listing cannot drift from the parser.
+    commands: list[tuple[str, str]] = []
+
+    def cmd(name: str, summary: str, *, blank_before: bool = False):
+        if blank_before:
+            commands.append(("", ""))       # visual group separator
+        commands.append((name, summary))
+        return sub.add_parser(name, help=summary)
 
     def with_platform(sp):
         sp.add_argument("--platform", "-p", help="restrict to one platform")
@@ -625,11 +588,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="challenge name/slug; default: the current folder")
         return with_platform(sp)
 
-    sp = sub.add_parser("init", help="first-run setup")
+    sp = cmd("init", "first-run setup: set the CTF root, create the database")
     sp.add_argument("--root", help="CTF root directory")
     sp.set_defaults(func=cmd_init)
 
-    sp = with_platform(sub.add_parser("get", help="download a challenge and track it"))
+    sp = with_platform(cmd("get", "download a challenge into a folder and track it",
+                           blank_before=True))
     sp.add_argument("ref")
     sp.add_argument("--force", action="store_true", help="re-download existing files")
     sp.add_argument("--no-download", action="store_true", help="create and track only")
@@ -638,35 +602,38 @@ def build_parser() -> argparse.ArgumentParser:
                     help="(used by the zsh wrapper; path always goes to stdout)")
     sp.set_defaults(func=cmd_get)
 
-    sp = with_platform(sub.add_parser("adopt", help="import existing directories"))
+    sp = with_platform(cmd("adopt", "import challenge folders you already have"))
     sp.add_argument("--dry-run", action="store_true")
     sp.set_defaults(func=cmd_adopt)
 
-    sp = sub.add_parser("index", help="rebuild a platform catalogue")
+    sp = cmd("index", "rebuild a platform's challenge catalogue")
     sp.add_argument("platform")
     sp.add_argument("--from-file", help="JSON produced by the browser snippet")
     sp.set_defaults(func=cmd_index)
 
-    sp = with_platform(sub.add_parser("list", help="tracked challenges"))
+    sp = with_platform(cmd("list", "tracked challenges, filterable", blank_before=True))
     sp.add_argument("--status", choices=dbmod.STATUSES)
     sp.add_argument("--category", "-c")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(func=cmd_list)
 
-    sp = with_ref(sub.add_parser("show", help="one challenge in detail"))
+    sp = with_ref(cmd("show", "one challenge in detail"))
     sp.set_defaults(func=cmd_show)
 
-    sp = with_ref(sub.add_parser("hint", help="print hints (kept out of `show`)"))
+    sp = with_ref(cmd("hint", "print hints — deliberately not shown by `show`"))
     sp.add_argument("--number", "-n", type=int, metavar="N",
                     help="print only hint N instead of all of them")
     sp.set_defaults(func=cmd_hint)
 
-    for status in ("start", "stuck", "abandon"):
-        canonical = {"start": "started", "stuck": "stuck", "abandon": "abandoned"}[status]
-        sp = with_ref(sub.add_parser(status, help=f"mark as {canonical}"))
+    for name, canonical, summary in (
+        ("start", "started", "mark as in progress"),
+        ("stuck", "stuck", "mark as stuck"),
+        ("abandon", "abandoned", "mark as abandoned"),
+    ):
+        sp = with_ref(cmd(name, summary, blank_before=(name == "start")))
         sp.set_defaults(func=cmd_status, status=canonical)
 
-    sp = with_ref(sub.add_parser("solve", help="mark as solved"))
+    sp = with_ref(cmd("solve", "mark as solved, optionally recording the flag"))
     sp.add_argument("--flag", "-f")
     sp.set_defaults(func=cmd_status, status="solved")
 
@@ -674,45 +641,63 @@ def build_parser() -> argparse.ArgumentParser:
     # `ctf note garden ...` would be indistinguishable from a note that happens
     # to start with the word "garden". The ref moves to a flag; omitted, the
     # cwd rule applies as everywhere else.
-    sp = with_platform(sub.add_parser("note", help="append a note"))
+    sp = with_platform(cmd("note", "append a timestamped note"))
     sp.add_argument("--ref", "-r", help="challenge; default: the current folder")
     sp.add_argument("text", nargs="+")
     sp.set_defaults(func=cmd_note)
 
-    sp = with_platform(sub.add_parser("tag", help="add tags"))
+    sp = with_platform(cmd("tag", "add free-form tags"))
     sp.add_argument("--ref", "-r", help="challenge; default: the current folder")
     sp.add_argument("tags", nargs="+")
     sp.set_defaults(func=cmd_tag)
 
-    sp = sub.add_parser("export", help="csv / markdown / json")
+    sp = cmd("export", "write the tracker out as csv, markdown or json")
     sp.add_argument("--format", choices=("csv", "md", "json"), default="csv")
     sp.add_argument("--output", "-o", help="file, or - for stdout")
     sp.set_defaults(func=cmd_export)
 
-    for name, help_text in (("path", "print the directory"), ("cd", "print the directory")):
-        sp = with_ref(sub.add_parser(name, help=help_text))
+    for name, summary in (("path", "print a challenge's directory"),
+                          ("cd", "print it, and cd there via the zsh wrapper")):
+        sp = with_ref(cmd(name, summary, blank_before=(name == "path")))
         sp.add_argument("--print-path", action="store_true", help=argparse.SUPPRESS)
         sp.set_defaults(func=cmd_path)
 
-    sp = with_ref(sub.add_parser("open", help="open the challenge page"))
+    sp = with_ref(cmd("open", "open the challenge page in a browser"))
     sp.set_defaults(func=cmd_open)
 
-    sp = sub.add_parser("platforms", help="registered platforms")
+    sp = cmd("platforms", "registered platforms and index freshness")
     sp.set_defaults(func=cmd_platforms)
 
-    sp = sub.add_parser("help", help="task-oriented overview with examples")
+    sp = cmd("help", "the guide: workflow, refs, indexing", blank_before=True)
     sp.add_argument("topic", nargs="?", help="a command name, for its own help")
     sp.set_defaults(func=cmd_help)
 
+    p.ctf_commands = commands
     return p
 
 
+def usage_text(parser) -> str:
+    """Short listing printed by bare `ctf`: usage line plus one line each."""
+    lines = ["usage: ctf <command> [<ref>] [options]", ""]
+    width = max(len(n) for n, _ in parser.ctf_commands if n)
+    for name, summary in parser.ctf_commands:
+        lines.append("" if not name else f"  {name:<{width}}  {summary}")
+    lines += [
+        "",
+        "<ref> is optional — it defaults to the challenge folder you are in.",
+        "`ctf help` for the guide, `ctf <command> --help` for its flags.",
+    ]
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    # Bare `ctf` shows the overview rather than an argparse usage error: the
-    # thing a person types when they do not know what to type should teach them.
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    # Bare `ctf` lists the commands rather than raising an argparse usage error:
+    # the thing a person types when they do not know what to type should teach
+    # them. `ctf help` is the longer guide.
     if not getattr(args, "func", None):
-        out(HELP.rstrip())
+        out(usage_text(parser))
         return EXIT_OK
     try:
         return args.func(args)
