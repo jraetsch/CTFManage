@@ -99,6 +99,37 @@ rather than attempting to defeat bot protection.
 | Listing response | `{results: [...], count: N}` — **verified 2026-08-04**. There is **no `next` field**; see § Pagination |
 | Catalogue size | **525 challenges**, 6 pages at `page_size=100` (verified) |
 | `page_size` cap | 100 honoured; larger values untested |
+| Detail endpoint | `/api/challenges/<id>/` |
+| Instance endpoint | `/api/challenges/<id>/instance/` — carries `description`, `hints`, `endpoints` |
+
+**Verified record schema** (live run, 2026-08-04, 525 challenges):
+
+```
+challenge:  id, name, author, difficulty, event, category, tags, sponsor,
+            include_in_gym, rating_count, positive_rating_count, users_solved,
+            users_solved_during_event, event_points, solved_by_user,
+            solved_by_team, under_maintenance, bookmarked, errata,
+            active_assignments, retired
+instance:   id, status, expires_in, description, hints, on_demand, endpoints
+```
+
+There is **no `points` field** — it is `event_points`. Reading `points`, as the
+first mapping did, gave `NULL` for all 525 challenges without erroring.
+
+There is no challenge-page URL either; it is constructed as
+`play.picoctf.org/practice/challenge/<id>`, which matches the `Referer` the
+2022 client captured.
+
+Health numbers from that run, worth comparing against on a re-index:
+
+```
+descriptions: 517/525      8 have none — on-demand or retired
+with URLs:    322/525      the rest are endpoint-only or description-only
+```
+
+`solved_by_user` is the interesting one: the platform already knows which
+challenges you have solved, so `ctf list --available` marks those that are
+solved upstream but untracked locally.
 | Headless access | **Blocked.** 403, Cloudflare managed challenge. A Chrome `User-Agent` does not help. |
 | Auth | Required (session cookie) in addition to the Cloudflare clearance. |
 | Artifact hosts | `artifacts.picoctf.net` **and** `challenge-files.picoctf.net` — at least two, see below |

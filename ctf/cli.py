@@ -429,12 +429,22 @@ def cmd_list_available(args) -> int:
     for platform, c, status in rows:
         mark = _status_mark(status) if status else " "
         name = c.name if len(c.name) <= w_name else c.name[:w_name - 1] + "…"
-        extra = c.difficulty or ""
-        msg(f" {mark} {name:<{w_name}}  {(c.category or ''):<{w_cat}}  {extra}")
+        flags = []
+        if c.solved_on_platform and not status:
+            flags.append("solved upstream")
+        if c.retired:
+            flags.append("retired")
+        note = ("   " + ", ".join(flags)) if flags else ""
+        msg(f" {mark} {name:<{w_name}}  {(c.category or ''):<{w_cat}}  "
+            f"{(c.difficulty or ''):<8}{note}")
 
     have = sum(1 for _, _, s in rows if s)
+    upstream = sum(1 for _, c, s in rows if c.solved_on_platform and not s)
     msg("")
     msg(f" {len(rows)} in the catalogue — {have} tracked, {len(rows) - have} not")
+    if upstream:
+        # The platform knows you solved these; the local tracker does not.
+        msg(f" {upstream} are solved on the platform but not tracked here")
     if not args.untracked and have:
         msg(" `ctf list --available --untracked` hides the ones you have")
     msg(" `ctf get \"<name>\"` to fetch one")

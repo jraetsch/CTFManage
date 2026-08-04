@@ -165,9 +165,28 @@ console.log(`done: ${out.length} challenges`);
 
 
 # -- field mapping ---------------------------------------------------------
-# Field names below come from a working 2022 client (SMenigat/picoctf-dl) and
-# are a strong prior, not verified current truth. Every access is defensive so
-# a rename degrades to a NULL column rather than a traceback.
+# VERIFIED 2026-08-04 against the live API (525 challenges). Actual fields:
+#
+#   challenge: id, name, author, difficulty, event, category, tags, sponsor,
+#              include_in_gym, rating_count, positive_rating_count,
+#              users_solved, users_solved_during_event, event_points,
+#              solved_by_user, solved_by_team, under_maintenance, bookmarked,
+#              errata, active_assignments, retired
+#   instance:  id, status, expires_in, description, hints, on_demand, endpoints
+#
+# Note there is NO `points` field — it is `event_points`. Accesses stay
+# defensive anyway: a rename should degrade to a NULL column, not a traceback.
+
+
+def _int(value) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def _text(value) -> str | None:
@@ -215,7 +234,8 @@ def normalise(rec: dict, hosts: set[str] | None = None) -> dict:
         "name": name,
         "category": _text(rec.get("category")),
         "difficulty": _text(rec.get("difficulty")),
-        "points": rec.get("points") if isinstance(rec.get("points"), int) else None,
+        # `event_points`, not `points` — there is no `points` field (verified).
+        "points": _int(rec.get("event_points") or rec.get("points")),
         "event": _text(rec.get("event")) or _text(rec.get("competition")),
         "author": _text(rec.get("author")),
         "description": inst.get("description") or rec.get("description"),
@@ -224,6 +244,14 @@ def normalise(rec: dict, hosts: set[str] | None = None) -> dict:
         "endpoints": [{"label": e.label, "endpoint": e.endpoint}
                       for e in _endpoints(rec, inst)],
         "hints": _hints(rec, inst),
+        # Platform-side flags worth keeping so they need no second browser run.
+        # `tags` stays out of the DB `tags` column, which is the user's own —
+        # see docs/ARCHITECTURE.md § Data model.
+        "tags": [str(t) for t in (rec.get("tags") or []) if t],
+        "retired": bool(rec.get("retired")),
+        "on_demand": bool(inst.get("on_demand")),
+        "solved_on_platform": bool(rec.get("solved_by_user")),
+        "users_solved": _int(rec.get("users_solved")),
         "_suspect_urls": suspect,
         "raw": rec,
     }
@@ -254,6 +282,10 @@ def _to_challenge(entry: dict) -> Challenge:
         description=entry.get("description"),
         author=entry.get("author"),
         platform_id=entry.get("platform_id"),
+        tags=list(entry.get("tags") or []),
+        retired=bool(entry.get("retired")),
+        on_demand=bool(entry.get("on_demand")),
+        solved_on_platform=bool(entry.get("solved_on_platform")),
         raw=entry.get("raw"),
     )
 

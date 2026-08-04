@@ -58,6 +58,10 @@ class Challenge:
     description: str | None = None
     author: str | None = None
     platform_id: str | None = None
+    tags: list[str] = field(default_factory=list)
+    retired: bool = False
+    on_demand: bool = False
+    solved_on_platform: bool = False
     raw: dict | None = None
 
     @property

@@ -71,6 +71,24 @@ class TestNormalise(unittest.TestCase):
         self.assertEqual(e["endpoints"], [{"label": "netcat",
                                            "endpoint": "nc saturn.picoctf.net 51234"}])
 
+    def test_points_come_from_event_points(self):
+        """There is no `points` field — reading it gave NULL for everything."""
+        self.assertEqual(self.by_name["Glory of the Garden"]["points"], 50)
+        self.assertEqual(self.by_name["Sum-O-Primes"]["points"], 300)
+
+    def test_platform_flags_are_captured(self):
+        garden = self.by_name["Glory of the Garden"]
+        self.assertEqual(garden["tags"], ["forensics", "beginner"])
+        self.assertTrue(garden["solved_on_platform"])
+        self.assertFalse(garden["retired"])
+        self.assertTrue(self.by_name["Timestamped Secrets"]["retired"])
+        self.assertTrue(self.by_name["Sum-O-Primes"]["on_demand"])
+
+    def test_platform_tags_do_not_reach_the_user_tags_column(self):
+        """`tags` in the DB is the user's; the platform's live in the index."""
+        from ctf.db import _PLATFORM_COLUMNS
+        self.assertNotIn("tags", _PLATFORM_COLUMNS)
+
     def test_hints_survive(self):
         self.assertEqual(self.by_name["Sum-O-Primes"]["hints"],
                          ["RSA is fragile when p and q are close."])

@@ -8,8 +8,9 @@ Build order is `docs/ARCHITECTURE.md` § Build order.
 
 ## Status
 
-**All modules implemented. 26 tests passing. End-to-end verified against the
-live picoCTF CDN.**
+**All modules implemented. 53 tests passing. End-to-end verified against the
+live picoCTF CDN, and index acquisition verified against the real API
+(525 challenges).**
 
 | # | Module | State | Notes |
 |---|---|---|---|
@@ -76,10 +77,18 @@ Fold these back into `docs/` — the code is now ahead of the spec.
 
 ## Known gaps
 
-- **The console snippet has never been run against the live API.** Field names
-  come from a 2022 client and the fixture is hand-written from them. Expect the
-  mapping in `normalise()` to need one edit on first real use — it is
-  deliberately the only place that needs touching.
+- ~~The console snippet has never been run against the live API.~~ **Closed
+  2026-08-04.** Run against the real API: 525 challenges over 6 pages, response
+  shape `{results, count}` with no `next` field, and the full record schema is
+  now recorded in `docs/PLATFORMS.md`. Two bugs it surfaced, both silent:
+  pagination capped the index at one page, and `points` was read from a field
+  that does not exist (`event_points`). The prediction that `normalise()` would
+  be the only place needing an edit held.
+- **Artifact counts after classification are still unmeasured.** The snippet
+  reports 322/525 records carrying *any* URL; how many survive host
+  classification as real artifacts is not yet known. Compare against the
+  `challenges have neither artifacts nor endpoints` line on the next
+  `ctf index`.
 - `ctfLearn` is a stub that raises `ManualStepRequired`. Adoption of existing
   ctfLearn directories works regardless.
 - No `ctf rm`/`ctf archive`. Deleting is the user's job by design.
@@ -90,6 +99,6 @@ Fold these back into `docs/` — the code is now ahead of the spec.
 
 ```bash
 cd ~/src/ctftool
-python3 -m unittest discover -s tests -t .     # 26 tests
+python3 -m unittest discover -s tests -t .     # 53 tests
 python3 -m ctf --help                          # runs without installing
 ```
