@@ -98,6 +98,7 @@ local and instant. Details in `docs/PLATFORMS.md`.
 $ ctf get "Glory of the Garden"        # download + track + cd into it
 $ ctf start                            # no ref needed — you are standing in it
 $ ctf note tried strings, nothing
+$ ctf hint                             # hints are never shown by `ctf show`
 $ ctf solve --flag 'picoCTF{…}'
 $ ctf list --status started
 $ ctf list --category Forensics --platform picoCTF
@@ -111,6 +112,10 @@ act on a different one, name it: `ctf show garden`, `ctf open garden`.
 `note` and `tag` take free text, so their ref is a flag instead:
 `ctf note -r garden tried strings`. Otherwise a note starting with a challenge
 name would be indistinguishable from a ref.
+
+Hints are deliberately kept out of `ctf show`, which only reports how many
+exist. Reading one is then a deliberate act — `ctf hint`, or `ctf hint -n 2`
+for a single hint — rather than a side effect of checking a category.
 
 Statuses: `new`, `started`, `stuck`, `solved`, `abandoned`.
 

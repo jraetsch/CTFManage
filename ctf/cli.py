@@ -369,14 +369,22 @@ def cmd_show(args) -> int:
             msg(f"  {label:<10} {r[key]}")
     msg(f"  {'path':<10} {cfg.ctf_root / r['path']}")
 
-    for key, title in (("endpoints", "endpoints"), ("hints", "hints")):
-        if r[key]:
-            items = json.loads(r[key])
-            if items:
-                msg(f"  {title}:")
-                for it in items:
-                    msg(f"    - {it['label']}: {it['endpoint']}"
-                        if isinstance(it, dict) else f"    - {it}")
+    if r["endpoints"]:
+        items = json.loads(r["endpoints"])
+        if items:
+            msg("  endpoints:")
+            for it in items:
+                msg(f"    - {it['label']}: {it['endpoint']}"
+                    if isinstance(it, dict) else f"    - {it}")
+
+    # Hints are spoilers, so `show` only says they exist. `ctf hint` prints
+    # them, which keeps revealing one a deliberate act rather than a side
+    # effect of looking up the category.
+    hints = json.loads(r["hints"]) if r["hints"] else []
+    if hints:
+        n = len(hints)
+        msg(f"  {'hints':<10} {n} available — `ctf hint"
+            f"{'' if not args.ref else ' ' + args.ref}` to read")
 
     arts = dbmod.artifacts_for(conn, r["id"])
     if arts:
@@ -401,6 +409,32 @@ def cmd_status(args) -> int:
     flag = getattr(args, "flag", None)
     dbmod.set_status(conn, r["id"], args.status, flag)
     msg(f"{r['name']} → {args.status}" + (f"  {flag}" if flag else ""))
+    return EXIT_OK
+
+
+def cmd_hint(args) -> int:
+    cfg = cfgmod.load()
+    conn = _open_db(cfg)
+    r = _one(conn, cfg, args.ref, args.platform)
+    hints = json.loads(r["hints"]) if r["hints"] else []
+    if not hints:
+        msg(f"no hints recorded for {r['name']!r}")
+        return EXIT_OK
+
+    if args.number is not None:
+        if not 1 <= args.number <= len(hints):
+            raise CLIError(f"{r['name']!r} has {len(hints)} hints; "
+                           f"{args.number} is out of range")
+        hints = [hints[args.number - 1]]
+        labels = [args.number]
+    else:
+        labels = range(1, len(hints) + 1)
+
+    msg(f"{r['name']} — {len(hints)} of "
+        f"{len(json.loads(r['hints']))} hints")
+    for i, h in zip(labels, hints):
+        msg("")
+        msg(f"  [{i}] {h}")
     return EXIT_OK
 
 
@@ -482,6 +516,7 @@ TYPICAL SESSION
 
       ctf start                         these act on the current folder
       ctf note tried strings
+      ctf hint
       ctf solve --flag 'picoCTF{...}'
 
   note and tag take free text, so their ref is a flag rather than a positional
@@ -505,6 +540,8 @@ TRACKING
   ctf list                       everything, grouped and counted
       --status <s>  --category <c>  --platform <p>  --json
   ctf show [ref]                 one challenge in full, with artifacts + notes
+  ctf hint [ref] [-n N]          print hints — deliberately NOT part of `show`,
+                                 so looking up a category cannot spoil you
   ctf start|stuck|abandon [ref]  change status
   ctf solve [ref] [--flag F]     status=solved, stamps the solve time
   ctf note [-r ref] <text>       append a timestamped note
@@ -615,6 +652,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = with_ref(sub.add_parser("show", help="one challenge in detail"))
     sp.set_defaults(func=cmd_show)
+
+    sp = with_ref(sub.add_parser("hint", help="print hints (kept out of `show`)"))
+    sp.add_argument("--number", "-n", type=int, metavar="N",
+                    help="print only hint N instead of all of them")
+    sp.set_defaults(func=cmd_hint)
 
     for status in ("start", "stuck", "abandon"):
         canonical = {"start": "started", "stuck": "stuck", "abandon": "abandoned"}[status]
