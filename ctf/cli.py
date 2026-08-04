@@ -503,21 +503,24 @@ TYPICAL SESSION
 
       ctf get "Glory of the Garden"     create the folder, download the files,
                                         start tracking it, and cd into it
-      ctf start garden                  mark it as in progress
-      ctf note garden "tried strings"   jot down where you got to
-      ctf solve garden --flag 'picoCTF{...}'
+      ctf start                         mark it as in progress
+      ctf note tried strings, nothing   jot down where you got to
+      ctf hint                          when you are stuck
+      ctf solve --flag 'picoCTF{...}'
+
+  After `ctf get` you are already in the challenge folder, so none of those
+  need a name. See REFS below for acting on a challenge you are not in.
 
   Refs are lenient: exact slug, then exact name, then substring. So `garden`,
   `glory_of_the_garden` and "Glory of the Garden" all work. If a ref matches
   more than one challenge, ctf lists the candidates and refuses to guess.
 
-  <ref> is optional everywhere. Leave it out and ctf uses the challenge whose
-  folder you are standing in, so once you have cd'd in, the ref is noise:
+REFS
+  <ref> is optional on every command that acts on an existing challenge. Left
+  out, it means the challenge whose folder you are in — a subdirectory counts,
+  so it still works from `glory_of_the_garden/scratch/`.
 
-      ctf start                         these act on the current folder
-      ctf note tried strings
-      ctf hint
-      ctf solve --flag 'picoCTF{...}'
+  To act on a challenge you are not standing in, name it: `ctf show garden`.
 
   note and tag take free text, so their ref is a flag rather than a positional
   ('ctf note garden ...' could not be told apart from a note beginning with the

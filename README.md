@@ -13,8 +13,10 @@ picoCTF · Glory of the Garden · Forensics
 
 With the shell function installed, that also drops you in the directory.
 
-> **Status: design only.** Nothing is implemented yet. `CLAUDE.md` and `docs/`
-> are the spec. See `docs/ARCHITECTURE.md` § Build order to start.
+> **Status: working.** Every command is implemented, with 26 tests and an
+> end-to-end run against the live picoCTF CDN. The one unverified piece is the
+> browser index snippet, which has never run against the real API — see
+> `BUILD_LOG.md` § Known gaps.
 
 ## What it does
 
