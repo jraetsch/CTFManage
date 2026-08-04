@@ -45,7 +45,7 @@ class CTFLearn(Platform):
             resume_with="",
         )
 
-    def refresh_index(self, source: Path | None = None) -> int:
+    def refresh_index(self, source: Path | None = None, on_unknown_host=None) -> int:
         raise ManualStepRequired(
             reason="ctfLearn is not implemented",
             instructions=_NOT_IMPLEMENTED,

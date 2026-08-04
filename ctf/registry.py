@@ -36,8 +36,14 @@ class Platform:
         """ref -> candidates. Pure local lookup against the index. No network."""
         raise NotImplementedError
 
-    def refresh_index(self, source: Path | None = None) -> int:
-        """Rebuild the local index; return the number of challenges indexed."""
+    def refresh_index(self, source: Path | None = None, on_unknown_host=None) -> int:
+        """Rebuild the local index; return the number of challenges indexed.
+
+        `on_unknown_host(host, urls) -> bool` is an optional callback the CLI
+        supplies so a platform can ask before trusting a host it has not seen.
+        Platforms stay UI-free: they decide *what* is unrecognised, the caller
+        decides *how* to ask. When it is None, warn loudly and trust nothing.
+        """
         raise NotImplementedError
 
     def index_status(self) -> str:

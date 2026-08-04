@@ -231,9 +231,26 @@ def classify(urls: list[str]) -> tuple[list[str], list[str]]:
 
 Two required behaviours, both learned from the `challenge-files` miss:
 
-1. **`ctf index` must report suspects loudly**, e.g.
-   `warning: 12 URLs on unseen host 'files2.picoctf.net' — add to ARTIFACT_HOSTS?`
-   A new host must surface as a visible prompt, never as silence.
+1. **`ctf index` asks about unknown hosts, before writing the index.**
+
+   ```
+   unseen host serving 12 URL(s):  files2.picoctf.net
+       https://files2.picoctf.net/c_new/abc/data.bin
+     Treat as an artifact host and download from it? [y/N]
+   ```
+
+   Accepting applies **in the same run** — classification happens in a second
+   pass after the prompt, so there is no re-index step. The host is persisted to
+   `[platforms.picoCTF] artifact_hosts` in `config.toml`, *not* written back
+   into `ARTIFACT_HOSTS`: the tool must never edit its own checkout, and a
+   user's discovery is user data. `ARTIFACT_HOSTS` remains the shipped default.
+
+   The prompt goes to **stderr** — `input()` writes its prompt to stdout by
+   default, which would corrupt the machine-readable channel.
+
+   When there is no way to ask (not a tty, or a caller that passes no callback)
+   the host is **not** trusted and the old loud warning is printed instead.
+   `--yes` accepts everything unattended.
 2. **`ctf get` must fail loudly on zero artifacts.** If a challenge resolves but
    has an empty artifact list, exit non-zero with
    `no artifacts recorded for <name> — the index may predate a host change`.

@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..config import load as load_config
+from ..config import save as save_config
 from ..materialize import slugify
 from ..models import Artifact, Challenge, Endpoint
 from ..registry import ManualStepRequired, Platform, register
@@ -35,12 +36,19 @@ KNOWN_NON_ARTIFACT_HOSTS = {
 }
 
 
-def classify(urls: list[str]) -> tuple[list[str], list[str]]:
-    """-> (artifacts, unknown_picoctf_hosts). Everything else is dropped."""
+def classify(urls: list[str], hosts: set[str] | None = None) -> tuple[list[str], list[str]]:
+    """-> (artifacts, unknown_picoctf_hosts). Everything else is dropped.
+
+    `hosts` defaults to the built-in set; refresh_index() passes the built-in
+    set plus anything the user has confirmed, so a newly accepted host takes
+    effect in the same run that discovered it.
+    """
+    if hosts is None:
+        hosts = ARTIFACT_HOSTS
     artifacts, suspect = [], []
     for u in urls:
         host = urlparse(u).netloc.lower()
-        if host in ARTIFACT_HOSTS:
+        if host in hosts:
             if u not in artifacts:
                 artifacts.append(u)
         elif host in KNOWN_NON_ARTIFACT_HOSTS:
@@ -195,11 +203,11 @@ def _endpoints(rec: dict, inst: dict) -> list[Endpoint]:
     return out
 
 
-def normalise(rec: dict) -> dict:
+def normalise(rec: dict, hosts: set[str] | None = None) -> dict:
     """One platform record -> the normalised index entry we store on disk."""
     inst = rec.get("_instance") or {}
     urls = rec.get("_urls") or []
-    artifacts, suspect = classify(urls)
+    artifacts, suspect = classify(urls, hosts)
     cid = rec.get("id") or rec.get("pk")
     name = rec.get("name") or rec.get("title") or ""
     return {
@@ -288,7 +296,40 @@ class PicoCTF(Platform):
             return f"unreadable ({path})"
         return f"{n} challenges ({path})"
 
-    def refresh_index(self, source: Path | None = None) -> int:
+    # -- artifact hosts ----------------------------------------------------
+
+    CONFIG_KEY = "artifact_hosts"
+
+    def configured_hosts(self) -> list[str]:
+        """Extra artifact hosts the user has confirmed, from config.toml."""
+        cfg = load_config(required=False)
+        if not cfg:
+            return []
+        return list(cfg.platforms.get(self.name, {}).get(self.CONFIG_KEY, []))
+
+    def known_hosts(self) -> set[str]:
+        return ARTIFACT_HOSTS | set(self.configured_hosts())
+
+    def remember_hosts(self, hosts: list[str]) -> Path | None:
+        """Persist newly accepted hosts to config.toml.
+
+        Deliberately not written back into ARTIFACT_HOSTS in the source: the
+        tool must not edit its own checkout, and a user's discovery is user
+        data. The built-in set stays the shipped default.
+        """
+        if not hosts:
+            return None
+        cfg = load_config(required=False)
+        if not cfg:
+            return None
+        opts = cfg.platforms.setdefault(self.name, {})
+        merged = list(dict.fromkeys(list(opts.get(self.CONFIG_KEY, [])) + hosts))
+        opts[self.CONFIG_KEY] = merged
+        return save_config(cfg)
+
+    # -- index build -------------------------------------------------------
+
+    def refresh_index(self, source: Path | None = None, on_unknown_host=None) -> int:
         if source is None:
             raise ManualStepRequired(
                 reason="play.picoctf.org/api is behind Cloudflare and requires a login.",
@@ -300,13 +341,43 @@ class PicoCTF(Platform):
         if isinstance(records, dict):        # tolerate a {name: record} dump
             records = list(records.values())
 
-        entries, suspects, empty = [], {}, 0
+        hosts = self.known_hosts()
+
+        # First pass: find unrecognised picoCTF hosts before writing anything,
+        # so an accepted host is applied in this same run rather than needing a
+        # second index build.
+        suspects: dict[str, list[str]] = {}
         for rec in records:
-            entry = normalise(rec)
+            _, suspect = classify(rec.get("_urls") or [], hosts)
+            for u in suspect:
+                suspects.setdefault(urlparse(u).netloc.lower(), []).append(u)
+
+        accepted = []
+        if suspects and on_unknown_host is not None:
+            for host, urls in sorted(suspects.items(), key=lambda kv: -len(kv[1])):
+                if on_unknown_host(host, urls):
+                    accepted.append(host)
+            if accepted:
+                hosts = hosts | set(accepted)
+                written = self.remember_hosts(accepted)
+                if written:
+                    print(f"added {len(accepted)} host(s) to {written}", file=sys.stderr)
+        elif suspects:
+            # No way to ask (not a tty, or a caller that does not prompt).
+            # Stay loud — silence is the failure mode this guards against.
+            for host, urls in sorted(suspects.items()):
+                print(f"warning: {len(urls)} URLs on unseen host {host!r} — "
+                      f"re-run `ctf index {self.name}` on a terminal to add it",
+                      file=sys.stderr)
+                print(f"         e.g. {urls[0]}", file=sys.stderr)
+
+        # Second pass: build entries with the final host set.
+        entries, empty, still_suspect = [], 0, 0
+        for rec in records:
+            entry = normalise(rec, hosts)
             if not entry["name"]:
                 continue
-            for u in entry.pop("_suspect_urls", []):
-                suspects.setdefault(urlparse(u).netloc.lower(), []).append(u)
+            still_suspect += len(entry.pop("_suspect_urls", []))
             if not entry["artifacts"] and not entry["endpoints"]:
                 empty += 1
             entries.append(entry)
@@ -317,13 +388,9 @@ class PicoCTF(Platform):
             {"_ctftool_index": 1, "platform": self.name, "challenges": entries},
             indent=2, ensure_ascii=False), encoding="utf-8")
 
-        # Loud, per docs/PLATFORMS.md: a new artifact host must surface as a
-        # visible prompt, never as silence.
-        for host, urls in sorted(suspects.items()):
-            print(f"warning: {len(urls)} URLs on unseen host {host!r} — "
-                  f"add to ARTIFACT_HOSTS in ctf/platforms/picoctf.py?",
+        if still_suspect:
+            print(f"note: {still_suspect} URLs left on hosts you declined",
                   file=sys.stderr)
-            print(f"         e.g. {urls[0]}", file=sys.stderr)
         if empty:
             print(f"note: {empty}/{len(entries)} challenges have neither artifacts "
                   f"nor endpoints (likely description-only)", file=sys.stderr)

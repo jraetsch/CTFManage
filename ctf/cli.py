@@ -206,12 +206,49 @@ def cmd_adopt(args) -> int:
     return EXIT_OK
 
 
+def _ask_unknown_host(host: str, urls: list[str], assume_yes: bool = False) -> bool:
+    """Prompt for an unrecognised artifact host. Returns True to accept.
+
+    The prompt goes to stderr, not stdout: stdout is the machine-readable
+    channel and `input()` would otherwise write the prompt into it.
+    """
+    msg("")
+    msg(f"unseen host serving {len(urls)} URL(s):  {host}")
+    for u in urls[:3]:
+        msg(f"    {u}")
+    if len(urls) > 3:
+        msg(f"    ... and {len(urls) - 3} more")
+
+    if assume_yes:
+        msg("  accepted (--yes)")
+        return True
+    if not sys.stdin.isatty():
+        msg("  not a terminal — skipping (re-run interactively, or use --yes)")
+        return False
+
+    while True:
+        msg("  Treat as an artifact host and download from it? [y/N] ")
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            return False
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("", "n", "no"):
+            return False
+        msg("  please answer y or n")
+
+
 def cmd_index(args) -> int:
     registry.load_all()
     plat = registry.get(args.platform)
     source = Path(args.from_file).expanduser() if args.from_file else None
+
+    def ask(host, urls):
+        return _ask_unknown_host(host, urls, assume_yes=args.yes)
+
     try:
-        n = plat.refresh_index(source)
+        n = plat.refresh_index(source, on_unknown_host=ask)
     except ManualStepRequired as e:
         msg(f"{plat.name}: {e.reason}\n")
         msg(e.instructions)
@@ -609,6 +646,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp = cmd("index", "rebuild a platform's challenge catalogue")
     sp.add_argument("platform")
     sp.add_argument("--from-file", help="JSON produced by the browser snippet")
+    sp.add_argument("--yes", "-y", action="store_true",
+                    help="accept every unseen artifact host without asking")
     sp.set_defaults(func=cmd_index)
 
     sp = with_platform(cmd("list", "tracked challenges, filterable", blank_before=True))

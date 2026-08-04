@@ -121,6 +121,8 @@ def save(cfg: Config) -> Path:
                 lines.append(f"{k} = {'true' if v else 'false'}")
             elif isinstance(v, int):
                 lines.append(f"{k} = {v}")
+            elif isinstance(v, (list, tuple)):
+                lines.append(f"{k} = [" + ", ".join(_toml_str(str(x)) for x in v) + "]")
             else:
                 lines.append(f"{k} = {_toml_str(str(v))}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
