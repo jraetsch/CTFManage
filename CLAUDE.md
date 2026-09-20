@@ -150,8 +150,14 @@ downloaded `.envrc` meaningful.
 
 Flagged rather than silently decided:
 
-1. Should `$CTF_ROOT/.ctftool/` be git-committed alongside challenges? (The DB
-   is placed there so it *can* be, but nothing auto-commits.)
-2. Is `sol.txt` scaffolding wanted on `ctf get`, or only on `ctf start`?
-3. ctfLearn: how does the user currently get files from it? Determines whether
+1. Is `sol.txt` scaffolding wanted on `ctf get`, or only on `ctf start`?
+2. ctfLearn: how does the user currently get files from it? Determines whether
    its index needs the same console-snippet treatment.
+
+Resolved:
+
+- `$CTF_ROOT/.ctftool/` (the DB) must **not** be git-committed, even if
+  challenge files under `$CTF_ROOT` end up in a repo (2026-09-20). If
+  auto-commit or `git init` support is ever added for `$CTF_ROOT`, it must
+  write/extend a `.gitignore` entry for `.ctftool/` rather than committing it —
+  `ctf.db` is SQLite, so its diffs are opaque binary blobs anyway.
