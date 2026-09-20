@@ -137,8 +137,10 @@ def write_description(dirpath: Path, challenge) -> str | None:
         parts.append("## Endpoints")
         parts.append("\n".join(f"- {e.label}: {e.endpoint}" for e in challenge.endpoints))
     if challenge.hints:
+        n = len(challenge.hints)
         parts.append("## Hints")
-        parts.append("\n".join(f"- {h}" for h in challenge.hints))
+        parts.append(f"{n} available — run `ctf hint` to read them "
+                      "(spoilers, so not dumped here)")
     if challenge.url:
         parts.append(f"[Challenge page]({challenge.url})")
     target.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
