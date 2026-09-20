@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -43,6 +44,33 @@ class CLIError(Exception):
 
 
 # -- helpers ---------------------------------------------------------------
+
+
+def _copy_to_clipboard(text: str) -> bool:
+    """Best-effort clipboard copy for a manual-step snippet. Never raises.
+
+    Tries whichever clipboard tool is on PATH (Wayland, X11, macOS, WSL). A
+    headless session or missing tool is the common case, not an error — the
+    snippet is always printed regardless of whether this succeeds.
+    """
+    for cmd in (["wl-copy"], ["xclip", "-selection", "clipboard"],
+                ["xsel", "--clipboard", "--input"], ["pbcopy"], ["clip.exe"]):
+        if shutil.which(cmd[0]) is None:
+            continue
+        try:
+            subprocess.run(cmd, input=text, text=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            timeout=5, check=True)
+            return True
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return False
+
+
+def _show_manual_step(e: "ManualStepRequired") -> None:
+    msg(e.instructions)
+    if _copy_to_clipboard(e.instructions):
+        msg("(copied to clipboard)")
 
 
 def _open_db(cfg):
@@ -252,7 +280,7 @@ def cmd_index(args) -> int:
         n = plat.refresh_index(source, on_unknown_host=ask)
     except ManualStepRequired as e:
         msg(f"{plat.name}: {e.reason}\n")
-        msg(e.instructions)
+        _show_manual_step(e)
         if e.resume_with:
             msg(f"\nthen run:\n    {e.resume_with}")
         return EXIT_OK
@@ -278,7 +306,7 @@ def cmd_get(args) -> int:
         candidates = plat.resolve(args.ref)
     except ManualStepRequired as e:
         msg(f"{plat.name}: {e.reason}\n")
-        msg(e.instructions)
+        _show_manual_step(e)
         return EXIT_ERR
 
     if not candidates:
@@ -847,7 +875,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ERR
     except ManualStepRequired as e:
         msg(f"{e.reason}\n")
-        msg(e.instructions)
+        _show_manual_step(e)
         return EXIT_OK
     except KeyboardInterrupt:
         msg("\ninterrupted")

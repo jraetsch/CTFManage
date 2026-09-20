@@ -13,7 +13,7 @@ picoCTF · Glory of the Garden · Forensics
 
 With the shell function installed, that also drops you in the directory.
 
-> **Status: working.** Every command is implemented, with 67 tests and an
+> **Status: working.** Every command is implemented, with 84 tests and an
 > end-to-end run against the live picoCTF CDN. Index acquisition is verified
 > against the real API (525 challenges); the remaining unknown is the field
 > mapping — see `BUILD_LOG.md` § Known gaps.
@@ -125,6 +125,11 @@ $ ctf index picoCTF           # prints a one-time browser step, see below
 and a login, while the challenge *files* are on a public CDN. The tool has you
 copy the catalogue out of your logged-in browser once; after that everything is
 local and instant. Details in `docs/PLATFORMS.md`.
+
+The snippet is also copied to your clipboard automatically, if a clipboard
+tool is available (`wl-copy`, `xclip`, `xsel`, `pbcopy`, or `clip.exe`) — the
+snippet is still printed either way, so a headless session or missing tool
+just means pasting from the terminal instead.
 
 ## Everyday use
 
