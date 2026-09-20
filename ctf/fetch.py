@@ -28,6 +28,7 @@ _TRACK = "░"
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _BAR_WIDTH = 24
 _REDRAW_INTERVAL = 0.08  # seconds; caps redraw rate on fast/local transfers
+_MIN_BAR_SIZE = 1024 * 1024  # below this, a bar just flashes and disappears
 _GREEN = "\x1b[32m"
 _DIM = "\x1b[2m"
 _RESET = "\x1b[0m"
@@ -167,7 +168,9 @@ def download(
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             total = int(resp.headers.get("Content-Length") or 0)
-            use_bar = (not quiet) and sys.stderr.isatty()
+            # Below the threshold (or unknown size) a bar draws once and is
+            # immediately replaced by finish() — pure flicker, no information.
+            use_bar = (not quiet) and sys.stderr.isatty() and total > _MIN_BAR_SIZE
             if use_bar:
                 bar = _ProgressBar(target.name, total)
             elif not quiet:
