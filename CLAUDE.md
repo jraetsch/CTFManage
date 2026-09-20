@@ -121,8 +121,11 @@ a real requirement, not polish.
   `csv`, `tomllib`, `dataclasses` cover everything. No pip install step.
 - The user originally asked for a shell tool. It became Python when bookkeeping
   entered scope; shell + `jq` for a queryable status table is a bad trade. A
-  thin zsh function still provides `cd` (a child process cannot chdir the
-  parent shell — see `docs/ARCHITECTURE.md` § Shell integration).
+  thin shell function still provides `cd` (a child process cannot chdir the
+  parent shell — see `docs/ARCHITECTURE.md` § Shell integration). `install.sh`
+  installs one for zsh, bash, or fish (user's choice at install time); there
+  is no single shell-independent implementation because `cd` must run
+  in-process and each shell's function syntax is its own.
 - Never delete or overwrite anything under `$CTF_ROOT` that the tool did not
   create. `ctf get` on an existing directory is additive and skips files that
   are already present.
@@ -136,15 +139,24 @@ a real requirement, not polish.
   `fetch.py`. The artifacts themselves are hostile by design (they are malware
   samples); the tool places them on disk and never executes or unpacks them.
 
-## The zsh wrapper was audited, and it is fine
+## The shell wrapper was audited, and it is fine
 
-Asked and answered on 2026-08-04, so do not re-litigate it: the `cd` wrapper is
-inert to define, fails closed, does not alter PATH resolution, and `cd` executes
-nothing on this machine (no `chpwd` hooks, no `direnv`, no `.` in `PATH`).
-Details and the two hardening tweaks that were adopted (`cd --`, absolute-path
-guard) are in `docs/ARCHITECTURE.md` § Why the wrapper is not a security
-surface. The one live caveat is recorded there: installing `direnv` would make a
-downloaded `.envrc` meaningful.
+Asked and answered on 2026-08-04 for zsh/bash, and again on 2026-09-20 when
+the fish equivalent was added (tested against fish 4.9.3), so do not
+re-litigate it: the `cd` hook is inert to define, fails closed, does not
+alter PATH resolution, and `cd` executes nothing on this machine (no `chpwd`
+hooks, no `direnv`, no `.` in `PATH`). Details and the hardening applied in
+each shell (`cd --`, absolute-path guard) are in `docs/ARCHITECTURE.md`
+§ Why the wrapper is not a security surface. The one live caveat is recorded
+there: installing `direnv` would make a downloaded `.envrc` meaningful,
+regardless of which shell's hook triggered the `cd`.
+
+The user switched from zsh to fish (2026-09-20); both are kept because
+`install.sh` lets the user pick zsh, bash, or fish per machine rather than
+assuming one. There is no shell-independent implementation — `cd` must run
+in-process, and each shell's function syntax is unrelated to the others'; see
+`docs/ARCHITECTURE.md` § Shell integration for why "make it portable" wasn't
+on the table.
 
 ## Open questions for the user
 

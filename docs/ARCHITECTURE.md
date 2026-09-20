@@ -238,8 +238,18 @@ Idempotent: running it twice downloads nothing and clobbers nothing.
 
 ## Shell integration
 
-A child process cannot change its parent shell's directory, so `cd` is provided
-by a zsh function in `~/.zshrc` rather than by the binary:
+A child process cannot change its parent shell's directory, so the binary can
+only ever *print* the destination (`ctf get`, `ctf cd`, `ctf path` all end in
+`out(str(dirpath))` — see § Stream contract below). Turning that into an
+actual `cd` needs a function defined in the shell itself, which is inherently
+shell-specific: fish's function/variable/substitution syntax shares nothing
+with zsh/bash's. `install.sh` installs one such function, asking which shell
+during install (`--shell zsh|bash|fish|none`) and tracking what it installed
+in its manifest so `--uninstall` removes exactly that.
+
+zsh and bash share one function body, appended to `~/.zshrc` or `~/.bashrc`
+between `# >>> ctftool shell hook >>>` / `<<<` markers (idempotent: a re-run
+replaces the block instead of duplicating it):
 
 ```zsh
 ctf() {
@@ -254,38 +264,70 @@ ctf() {
 }
 ```
 
+fish gets the same behavior via its own syntax, written to
+`~/.config/fish/functions/ctf.fish` — fish autoloads one function per file
+from that directory, so the file *is* the hook; no rc file to touch, and
+uninstall is a single `rm`:
+
+```fish
+function ctf
+    switch $argv[1]
+        case get cd
+            set -l d (command ctf $argv --print-path)
+            or return
+            if string match -q '/*' -- "$d"; and test -d "$d"
+                cd -- "$d"
+            end
+        case '*'
+            command ctf $argv
+    end
+end
+```
+
 ### Why the wrapper is not a security surface
 
-Audited 2026-08-04. Worth stating because a snippet pasted into `.zshrc` runs
-in every interactive shell, so "it's only eight lines" is not an argument.
+Audited 2026-08-04 (zsh/bash), re-verified 2026-09-20 when the fish version
+was added (tested against fish 4.9.3: correctly cds on success, stays put on
+a non-absolute path, and stays put when the underlying `ctf` exits nonzero —
+see `tests/test_install.py::TestFishHook`). Worth stating because a function
+sourced into every interactive shell runs on every prompt, so "it's only a
+few lines" is not an argument.
 
-- Defining the function is inert — `.zshrc` stores the body, it does not run it.
-- `command ctf` bypasses functions and aliases, so there is no recursion, and
-  PATH resolution is **identical to having no wrapper at all**. The wrapper does
-  not change which binary executes.
-- Every expansion is quoted. zsh does not word-split or glob unquoted command
-  substitutions in any case, so there is no injection surface.
-- `local d` keeps the variable out of the user's shell.
-- It **fails closed**: on tool error, empty output, or multi-line output, the
-  guard rejects `d` and the shell simply does not move.
-- `cd --` prevents a path starting with `-` being parsed as an option.
-  `[[ "$d" == /* ]]` requires an absolute path, so a future bug that prints a
-  relative fragment cannot chdir somewhere unexpected. Neither closes a live
-  hole; both are insurance against bugs in the tool, which is where the
-  variability lives.
+- Defining the function is inert — the rc file (or, for fish, the autoload
+  directory) stores the body; it does not run it.
+- `command ctf` bypasses functions and aliases in every shell here, so there
+  is no recursion, and PATH resolution is **identical to having no wrapper at
+  all**. The wrapper does not change which binary executes.
+- Every expansion is quoted, and none of zsh/bash/fish word-splits or globs a
+  quoted substitution, so there is no injection surface.
+- `local d` (zsh/bash) / `set -l d` (fish) keeps the variable out of the
+  user's shell.
+- It **fails closed** in all three: on tool error, empty output, or
+  unexpected shape, the guard rejects `d` and the shell simply does not move.
+  (fish's `or return` relies on `set` propagating the command substitution's
+  exit status, a documented fish ≥ 3.4 behavior — fish 4.9.3 confirmed above.)
+- `cd --` prevents a path starting with `-` being parsed as an option; fish's
+  `cd` accepts `--` the same way. `[[ "$d" == /* ]]` / `string match -q '/*'`
+  requires an absolute path, so a future bug that prints a relative fragment
+  cannot chdir somewhere unexpected. None of this closes a live hole; it's
+  insurance against bugs in the tool, which is where the variability lives.
 
 **`cd` does not execute file contents.** It becomes an execution vector only
-through directory-change hooks. On the user's machine (verified): no `chpwd` /
-`chpwd_functions`, `direnv` not installed, oh-my-zsh plugins are `git`,
-`colored-man-pages`, `command-not-found`, `zsh-autosuggestions`,
-`zsh-history-substring-search`, `zsh-syntax-highlighting`, `you-should-use` —
-none hook chpwd. `PATH` contains no `.` and no empty entry, so a file in a
-challenge directory cannot be run by typing its bare name.
+through directory-change hooks. On the user's machine (verified 2026-08-04
+for zsh): no `chpwd` / `chpwd_functions`, `direnv` not installed, oh-my-zsh
+plugins are `git`, `colored-man-pages`, `command-not-found`,
+`zsh-autosuggestions`, `zsh-history-substring-search`,
+`zsh-syntax-highlighting`, `you-should-use` — none hook chpwd. `PATH` contains
+no `.` and no empty entry, so a file in a challenge directory cannot be run by
+typing its bare name. (fish has an analogous `--on-variable PWD` hook
+mechanism; re-check it the same way before relying on the fish wrapper on a
+machine with fish plugins installed.)
 
 > **If `direnv` is ever installed, re-evaluate.** `ctf get` downloads
 > attacker-supplied filenames into a directory and then chdirs into it. A
 > downloaded `.envrc` is then code direnv wants to run. Its allow-list mitigates
-> this, but the combination is exactly the pattern to watch for.
+> this, but the combination is exactly the pattern to watch for. This applies
+> regardless of which shell's hook triggered the `cd`.
 
 ### Stream contract (load-bearing — do not violate)
 
@@ -304,7 +346,7 @@ silently breaks `cd` — the captured string contains the progress lines.
 The same rule makes `ctf list --json` and `ctf export -o -` pipeable.
 
 `ctf cd <ref>` is a subcommand that only resolves and prints a path; it is
-`ctf path` with the wrapper contract applied.
+`ctf path` with the shell-hook's stream contract in mind.
 
 ## Bookkeeping output
 

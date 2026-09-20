@@ -5,6 +5,7 @@ $CTF_ROOT. Run with:
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,9 @@ class InstallTestCase(unittest.TestCase):
         self.manifest = self.home / ".local" / "share" / "ctftool.manifest"
         self.launcher = self.home / ".local" / "bin" / "ctf"
         self.config_dir = self.home / ".config" / "ctftool"
+        self.zshrc = self.home / ".zshrc"
+        self.bashrc = self.home / ".bashrc"
+        self.fish_hook = self.home / ".config" / "fish" / "functions" / "ctf.fish"
 
     def run_install(self, *args, input_text=None):
         env = dict(os.environ)
@@ -160,13 +164,137 @@ class TestUninstall(InstallTestCase):
         self.assertIn("were not touched", result.stdout)
 
 
-@unittest.skipUnless(sys.platform.startswith("linux"), "install.sh targets Linux/zsh setups")
+@unittest.skipUnless(sys.platform.startswith("linux"), "install.sh targets Linux shell setups")
 class TestHelp(InstallTestCase):
     def test_help_exits_zero(self):
         result = self.run_install("--help")
         self.assertEqual(result.returncode, 0)
         self.assertIn("--symlink", result.stdout)
         self.assertIn("--uninstall", result.stdout)
+        self.assertIn("--shell", result.stdout)
+
+
+class TestShellHookDefault(InstallTestCase):
+    def test_no_hook_by_default_noninteractive(self):
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.zshrc.exists())
+        self.assertFalse(self.bashrc.exists())
+        self.assertFalse(self.fish_hook.exists())
+        self.assertIn("shell=none", self.manifest.read_text())
+
+    def test_shell_none_is_explicit_noop(self):
+        result = self.run_install("--shell", "none")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.zshrc.exists())
+        self.assertFalse(self.bashrc.exists())
+        self.assertFalse(self.fish_hook.exists())
+
+    def test_rejects_unknown_shell(self):
+        result = self.run_install("--shell", "powershell")
+        self.assertNotEqual(result.returncode, 0)
+
+
+class TestZshHook(InstallTestCase):
+    def test_appends_hook_preserving_existing_content(self):
+        self.zshrc.write_text("existing rc content\n")
+
+        result = self.run_install("--shell", "zsh")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.zshrc.read_text()
+        self.assertIn("existing rc content", text)
+        self.assertIn("ctf() {", text)
+        self.assertIn("shell=zsh", self.manifest.read_text())
+
+    def test_rerun_does_not_duplicate_block(self):
+        self.run_install("--shell", "zsh")
+        result = self.run_install("--shell", "zsh")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.zshrc.read_text()
+        self.assertEqual(text.count("ctftool shell hook >>>"), 1)
+
+    def test_uninstall_removes_only_our_block(self):
+        self.zshrc.write_text("existing rc content\n")
+        self.run_install("--shell", "zsh")
+
+        result = self.run_install("--uninstall", "--keep-config")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.zshrc.read_text()
+        self.assertIn("existing rc content", text)
+        self.assertNotIn("ctf() {", text)
+
+
+class TestBashHook(InstallTestCase):
+    def test_appends_hook_preserving_existing_content(self):
+        self.bashrc.write_text("existing rc content\n")
+
+        result = self.run_install("--shell", "bash")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.bashrc.read_text()
+        self.assertIn("existing rc content", text)
+        self.assertIn("ctf() {", text)
+
+    def test_uninstall_removes_only_our_block(self):
+        self.bashrc.write_text("existing rc content\n")
+        self.run_install("--shell", "bash")
+
+        result = self.run_install("--uninstall", "--keep-config")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.bashrc.read_text()
+        self.assertIn("existing rc content", text)
+        self.assertNotIn("ctf() {", text)
+
+
+class TestFishHook(InstallTestCase):
+    def test_installs_function_file(self):
+        result = self.run_install("--shell", "fish")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.fish_hook.exists())
+        self.assertIn("function ctf", self.fish_hook.read_text())
+        self.assertIn("shell_hook=" + str(self.fish_hook), self.manifest.read_text())
+
+    @unittest.skipUnless(shutil.which("fish"), "fish is not installed")
+    def test_installed_function_is_valid_fish_syntax(self):
+        self.run_install("--shell", "fish")
+        result = subprocess.run(
+            ["fish", "-n", str(self.fish_hook)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_refuses_to_clobber_unmanaged_function(self):
+        self.fish_hook.parent.mkdir(parents=True)
+        self.fish_hook.write_text("function ctf\n    echo mine\nend\n")
+
+        result = self.run_install("--shell", "fish")
+
+        self.assertEqual(result.returncode, 0, result.stderr)  # rest of install still succeeds
+        self.assertIn("echo mine", self.fish_hook.read_text())
+
+    def test_uninstall_removes_it(self):
+        self.run_install("--shell", "fish")
+
+        result = self.run_install("--uninstall", "--keep-config")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.fish_hook.exists())
+
+    def test_uninstall_leaves_unmanaged_function_alone(self):
+        self.fish_hook.parent.mkdir(parents=True)
+        self.fish_hook.write_text("function ctf\n    echo mine\nend\n")
+
+        result = self.run_install("--uninstall", "--keep-config")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("echo mine", self.fish_hook.read_text())
 
 
 if __name__ == "__main__":

@@ -61,8 +61,20 @@ venv. For a zero-dependency tool that is more machinery than it is worth — the
 launcher above is the recommended route.
 </details>
 
-Add to `~/.zshrc` so `ctf get` and `ctf cd` change directory (a program cannot
-chdir its parent shell, so this wrapper is required):
+`ctf get` and `ctf cd` always print the challenge's directory — a program
+can't `cd` its parent shell, so that's as far as the binary alone can go.
+`install.sh` optionally adds the last step: a small shell function, sourced
+into your shell, that captures the printed path and actually `cd`s there. It
+asks which shell during install (`zsh`, `bash`, `fish`, or skip); answer
+non-interactively with `--shell zsh|bash|fish|none`, and re-run `install.sh`
+any time to add, replace, or change it. `install.sh --uninstall` removes
+exactly the hook it installed.
+
+Each is native to its shell (fish's function syntax shares nothing with
+zsh/bash's), but all three do the same thing: run `ctf` for real, and only
+`cd` into the result if it's an absolute, existing path — otherwise stay put.
+The zsh/bash version (audited — see `docs/ARCHITECTURE.md` § Why the wrapper
+is not a security surface):
 
 ```zsh
 ctf() {
@@ -77,13 +89,29 @@ ctf() {
 }
 ```
 
-Progress output goes to stderr and the path to stdout, so you still see the
-download running while the wrapper captures only the destination.
+and the fish version, installed as `~/.config/fish/functions/ctf.fish`:
 
-The wrapper does not change which binary runs — `command ctf` resolves through
-`PATH` exactly as it would without it — and it fails closed, so a tool error
-leaves you where you were. If you use `direnv`, read
-`docs/ARCHITECTURE.md` § Why the wrapper is not a security surface first.
+```fish
+function ctf
+    switch $argv[1]
+        case get cd
+            set -l d (command ctf $argv --print-path)
+            or return
+            if string match -q '/*' -- "$d"; and test -d "$d"
+                cd -- "$d"
+            end
+        case '*'
+            command ctf $argv
+    end
+end
+```
+
+Progress output goes to stderr and the path to stdout, so you still see the
+download running while the hook captures only the destination. Neither
+wrapper changes which binary runs — `command ctf` resolves through `PATH`
+exactly as it would without it — and both fail closed, so a tool error leaves
+you where you were. If you use `direnv`, read `docs/ARCHITECTURE.md` § Why the
+wrapper is not a security surface first.
 
 ## First run
 

@@ -4,8 +4,9 @@ STREAM CONTRACT (load-bearing — see docs/ARCHITECTURE.md):
     stdout = machine-readable result only. Under --print-path, exactly the
              absolute path and nothing else.
     stderr = all human output: progress, warnings, errors.
-The zsh wrapper captures stdout via $(...), so violating this silently breaks
-`cd`. Use out() and msg() below; do not call bare print().
+Every shell hook (zsh, bash, fish — see install.sh) captures stdout via
+command substitution, so violating this silently breaks `cd`. Use out() and
+msg() below; do not call bare print().
 """
 
 from __future__ import annotations
@@ -727,7 +728,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--no-download", action="store_true", help="create and track only")
     sp.add_argument("--dry-run", action="store_true")
     sp.add_argument("--print-path", action="store_true",
-                    help="(used by the zsh wrapper; path always goes to stdout)")
+                    help="(used by the shell hook; path always goes to stdout)")
     sp.set_defaults(func=cmd_get)
 
     sp = with_platform(cmd("adopt", "import challenge folders you already have"))
@@ -794,7 +795,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_export)
 
     for name, summary in (("path", "print a challenge's directory"),
-                          ("cd", "print it, and cd there via the zsh wrapper")):
+                          ("cd", "print it, and cd there via the shell hook")):
         sp = with_ref(cmd(name, summary, blank_before=(name == "path")))
         sp.add_argument("--print-path", action="store_true", help=argparse.SUPPRESS)
         sp.set_defaults(func=cmd_path)
