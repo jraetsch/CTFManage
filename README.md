@@ -13,7 +13,7 @@ picoCTF · Glory of the Garden · Forensics
 
 With the shell function installed, that also drops you in the directory.
 
-> **Status: working.** Every command is implemented, with 50 tests and an
+> **Status: working.** Every command is implemented, with 67 tests and an
 > end-to-end run against the live picoCTF CDN. Index acquisition is verified
 > against the real API (525 challenges); the remaining unknown is the field
 > mapping — see `BUILD_LOG.md` § Known gaps.
@@ -29,23 +29,27 @@ With the shell function installed, that also drops you in the directory.
 ## Install
 
 Python 3.12+, **standard library only — no dependencies**, so there is nothing
-to install into a virtualenv. Drop a launcher on your `PATH` and you are done:
+to install into a virtualenv.
 
 ```console
-$ cat > ~/.local/bin/ctf <<'EOF'
-#!/bin/sh
-CTFTOOL_HOME="${CTFTOOL_HOME:-$HOME/src/ctftool}"
-export PYTHONPATH="$CTFTOOL_HOME${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -P -m ctf "$@"
-EOF
-$ chmod +x ~/.local/bin/ctf
+$ ./install.sh
 $ ctf init
 ```
 
-`~/.local/bin` is on `PATH` on most distributions; check with `command -v ctf`.
-Edits to the repo take effect immediately — there is no reinstall step. `-P`
-keeps the working directory off `sys.path`, so a challenge folder containing a
-stray `ctf.py` cannot shadow the package.
+This copies `ctf/` into `~/.local/share/ctftool` and drops a launcher at
+`~/.local/bin/ctf` (check `~/.local/bin` is on `PATH` with `command -v ctf`).
+Re-run `./install.sh` after pulling changes to pick them up.
+
+For working on ctftool itself, `./install.sh --symlink` links the install
+directory back to this checkout instead of copying it, so edits take effect
+immediately with no reinstall step.
+
+`./install.sh --uninstall` removes the launcher and install directory it
+created (never anything it didn't create) and asks before touching
+`~/.config/ctftool`; pass `--purge-config` or `--keep-config` to answer that
+non-interactively. It never touches `$CTF_ROOT` — your challenges and database
+are not install artifacts. See `./install.sh --help` for `--prefix`/`--bin-dir`
+overrides.
 
 <details>
 <summary>Alternative: a real package install</summary>
