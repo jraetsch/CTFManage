@@ -143,6 +143,7 @@ $ ctf list                             # what you are tracking
 $ ctf list --status started
 $ ctf list --available                 # the whole catalogue, tracked ones marked
 $ ctf list --available --untracked     # ... only what you have not done yet
+$ ctf list --available --status solved # ... narrowed to the ones you solved
 $ ctf export --format csv -o ~/ctf-overview.csv
 ```
 

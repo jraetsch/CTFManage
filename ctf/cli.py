@@ -427,6 +427,8 @@ def cmd_list_available(args) -> int:
             except mat.UnsafeName:
                 slug = None
             status = tracked.get((plat.name.lower(), slug)) if slug else None
+            if args.status and status != args.status:
+                continue
             if args.untracked and status is not None:
                 hidden += 1
                 continue
@@ -470,7 +472,10 @@ def cmd_list_available(args) -> int:
     have = sum(1 for _, _, s in rows if s)
     upstream = sum(1 for _, c, s in rows if c.solved_on_platform and not s)
     msg("")
-    msg(f" {len(rows)} in the catalogue — {have} tracked, {len(rows) - have} not")
+    if args.status:
+        msg(f" {len(rows)} in the catalogue are {args.status}")
+    else:
+        msg(f" {len(rows)} in the catalogue — {have} tracked, {len(rows) - have} not")
     if upstream:
         # The platform knows you solved these; the local tracker does not.
         msg(f" {upstream} are solved on the platform but not tracked here")

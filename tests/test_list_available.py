@@ -76,6 +76,20 @@ class ListAvailableTest(unittest.TestCase):
         self.assertNotIn("Glory of the Garden", err)
         self.assertIn("Sum-O-Primes", err)
 
+    def test_status_filter_applies_to_online_listing(self):
+        """`list --online --status solved` shows only solved catalogue entries."""
+        self.run_cli("get", "Glory of the Garden", "--no-download")
+        self.run_cli("solve", "Glory of the Garden")
+        _, _, err = self.run_cli("list", "--online", "--status", "solved")
+        self.assertIn("Glory of the Garden", err)
+        self.assertNotIn("Sum-O-Primes", err)
+        self.assertIn("1 in the catalogue are solved", err)
+
+    def test_status_filter_with_no_matches(self):
+        _, _, err = self.run_cli("list", "--online", "--status", "solved")
+        self.assertNotIn("Glory of the Garden", err)
+        self.assertIn("no match", err)
+
     def test_category_filter(self):
         _, _, err = self.run_cli("list", "--available", "--category", "Cryptography")
         self.assertIn("Timestamped Secrets", err)

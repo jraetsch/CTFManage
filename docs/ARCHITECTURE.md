@@ -195,6 +195,8 @@ ctf get <ref> [--platform P]          THE main command: (1a)(1b)(1c)
 ctf adopt [--platform P] [--dry-run]  backfill existing directories into the DB
 ctf index <platform> [--from-file F]  Layer 3; prints instructions if manual
 ctf list [--status S] [--category C] [--platform P] [--json]
+        [--available|--online] [--untracked]   catalogue view; --status and
+                                                --category filter it the same way
 ctf show <ref>                        one challenge in detail, incl. artifacts
 ctf start|stuck|abandon <ref>
 ctf solve <ref> [--flag F]            sets status=solved, solved_at=now

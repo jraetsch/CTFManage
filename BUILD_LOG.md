@@ -8,7 +8,7 @@ Build order is `docs/ARCHITECTURE.md` § Build order.
 
 ## Status
 
-**All modules implemented. 53 tests passing. End-to-end verified against the
+**All modules implemented. 90 tests passing. End-to-end verified against the
 live picoCTF CDN, and index acquisition verified against the real API
 (525 challenges).**
 
@@ -75,6 +75,14 @@ Fold these back into `docs/` — the code is now ahead of the spec.
 7. **`KNOWN_NON_ARTIFACT_HOSTS`** suppresses `picoctf.org` / `play.picoctf.org`
    so the unknown-host warning stays signal.
 
+## Fixes
+
+- **`ctf list --online --status S` ignored `--status`.** The catalogue view
+  (`cmd_list_available`) never applied the status filter, so the command listed
+  every online challenge. `--status` (and `--category`) now filter the
+  catalogue view the same way they filter the tracked view. Regression tests
+  in `tests/test_list_available.py`.
+
 ## Known gaps
 
 - ~~The console snippet has never been run against the live API.~~ **Closed
@@ -99,6 +107,6 @@ Fold these back into `docs/` — the code is now ahead of the spec.
 
 ```bash
 cd ~/src/ctftool
-python3 -m unittest discover -s tests -t .     # 53 tests
+python3 -m unittest discover -s tests -t .     # 90 tests
 python3 -m ctf --help                          # runs without installing
 ```
